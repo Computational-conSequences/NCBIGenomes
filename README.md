@@ -14,3 +14,11 @@ So, for example, if the user wanted all the Complete prokaryotic genomes, this c
 updateGenomes.pl prokaryotes Complete
 
 There's no dry option, there's no much in terms of warnings, etc.
+
+If you want to try something small:
+
+updateGenomes.pl prokaryotes Chromosome
+
+This set is somewhat small.
+
+The genomes are saved under the ncbi directory.
