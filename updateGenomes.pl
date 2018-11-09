@@ -244,6 +244,7 @@ sub check_md5s {
                 my($md5sum,$file) = split;
                 $file =~ s{.*/}{};
                 $md5sum{"$file"} = $md5sum;
+                #print join("\t",$file,$md5sum,$md5sum{"$file"}),"\n";
             }
             close($MD5F);
             ### learn file names
@@ -255,8 +256,10 @@ sub check_md5s {
                 my $failed = 0;
                 for my $file2check ( @files2check ) {
                     my $full_file = $local_path . "/" . $file2check;
-                    my $checkline = qx(md5sum $full_file);
-                    my ($md5sum,$checkedfile) = split(/\s+/,$checkline);
+                    my $checkline = qx(md5 $full_file);
+                    my (@outPut)  = split(/\s+/,$checkline);
+                    my $md5sum = $outPut[-1];
+                    #print join("<->",$file2check,$md5sum,$md5sum{"$file2check"},"verifying"),"\n";
                     if( $md5sum ne $md5sum{"$file2check"} ) {
                         $failed++;
                         #unlink("$full_file");
