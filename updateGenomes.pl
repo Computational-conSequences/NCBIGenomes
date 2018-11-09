@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 
+use strict;
 ### group of genomes to bring
 my $trygroup = shift @ARGV;
 
@@ -74,11 +75,11 @@ for my $status ( @status ) {
 my $maxTries = 5;
 $maxTries++;
 
-$rsyncMD5 =  'rsync -aqzL'
+my $rsyncMD5 =  'rsync -aqzL'
     . ' --timeout=15 --contimeout=10 '
     . ' ';
 
-$rsyncCmd =  'rsync -aqzL'
+my $rsyncCmd =  'rsync -aqzL'
     . ' --timeout=15 --contimeout=10'
     . ' --include="*_assembly_stats.txt"'
     . ' --include="*_assembly_regions.txt"'
@@ -98,6 +99,12 @@ $rsyncCmd =  'rsync -aqzL'
 #my ($iGroup,$iAssembly,$iStatus)
 #    = $group eq "prokaryotes" ? ("NA",18,15) : (4,8,16);
 ### open reports to learn genome status
+### to hold the indexes for the different items we care about:
+my $iGroup    = '';
+my $iStatus   = '';
+my $iAssembly = '';
+my %count     = ();
+my %status    = ();
 open( my $GNMS,"<","$listFile" );
 GNMLINE:
 while(<$GNMS>) {

@@ -1,16 +1,17 @@
 #!/usr/bin/perl
 
+use strict;
 my $print = $ARGV[0] eq "print" ? 1 : 0;
 
 ## remote
-$ncbiDir       = "rsync://rsync.ncbi.nlm.nih.gov";
-$genomeDir     = $ncbiDir   . "/genomes";
-$refseqDir     = $genomeDir . "/refseq";
-$taxonomyDir   = $ncbiDir   . "/pub/taxonomy";
+my $ncbiDir       = "rsync://rsync.ncbi.nlm.nih.gov";
+my $genomeDir     = $ncbiDir   . "/genomes";
+my $refseqDir     = $genomeDir . "/refseq";
+my $taxonomyDir   = $ncbiDir   . "/pub/taxonomy";
 ## here
-$localDir      = "ncbi";
-$localTaxonomy = "ncbi/taxonomy";
-$localLists    = "ncbi/genomeInfo";
+my $localDir      = "ncbi";
+my $localTaxonomy = "ncbi/taxonomy";
+my $localLists    = "ncbi/genomeInfo";
 
 #### retrieve reports
 if( $print > 0 ) {
