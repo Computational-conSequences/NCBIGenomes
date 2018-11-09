@@ -256,9 +256,8 @@ sub check_md5s {
                 my $failed = 0;
                 for my $file2check ( @files2check ) {
                     my $full_file = $local_path . "/" . $file2check;
-                    my $checkline = qx(md5 $full_file);
-                    my (@outPut)  = split(/\s+/,$checkline);
-                    my $md5sum = $outPut[-1];
+                    my $md5sum = qx(md5 -q $full_file);
+                    chomp($md5sum);
                     #print join("<->",$file2check,$md5sum,$md5sum{"$file2check"},"verifying"),"\n";
                     if( $md5sum ne $md5sum{"$file2check"} ) {
                         $failed++;
