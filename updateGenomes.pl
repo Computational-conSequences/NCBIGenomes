@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
+use Digest::MD5 qw(md5_hex);
 ### group of genomes to bring
 my $trygroup = shift @ARGV;
 
@@ -56,7 +57,7 @@ if( $countpref > 0 ) {
 my $countadded = @status;
 if( $countadded == 0 ) {
     if( $countpref > 0 ) {
-        die "  your arguments are no genome status:\n"
+        die "  your arguments are not genome status:\n"
             . "       [" . join("|",@allStatus) . "]";
     }
     else {
@@ -256,9 +257,10 @@ sub check_md5s {
                 my $failed = 0;
                 for my $file2check ( @files2check ) {
                     my $full_file = $local_path . "/" . $file2check;
-                    my $md5sum = qx(md5 -q $full_file);
-                    chomp($md5sum);
-                    #print join("<->",$file2check,$md5sum,$md5sum{"$file2check"},"verifying"),"\n";
+                    open( my $FL2CH,"<","$full_file" );
+                    binmode($FL2CH);
+                    my $md5sum = Digest::MD5->new->addfile($FL2CH)->hexdigest;
+                    close($FL2CH);
                     if( $md5sum ne $md5sum{"$file2check"} ) {
                         $failed++;
                         #unlink("$full_file");
