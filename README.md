@@ -15,10 +15,8 @@ updateGenomes.pl prokaryotes Complete
 
 There's no dry option, there's no much in terms of warnings, etc.
 
-If you want to try something small:
+If you want to try a small set of genomes:
 
 updateGenomes.pl prokaryotes Chromosome
 
-This set is somewhat small.
-
-The genomes are saved under the ncbi directory.
+The genomes are saved under the ncbi directory (for example ncbi/Protists).
