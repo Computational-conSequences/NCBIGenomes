@@ -10,13 +10,16 @@ Now, those files are used by the program: "updateGenomes.pl" which will retrieve
 2. It can accept, after the first argument, a list of genome status [Complete|Chromosome|Scaffold|Contig]. In the absence of this argument, the program willl retreieve all of them.
 
 So, for example, if the user wanted all the Complete prokaryotic genomes, this command would do (after running updateGenomeInfo.pl with no arguments):
-
 updateGenomes.pl prokaryotes Complete
 
 There's no dry option, there's no much in terms of warnings, etc.
 
 If you want to try a small set of genomes:
-
 updateGenomes.pl prokaryotes Chromosome
 
-The genomes are saved under the ncbi directory (for example ncbi/Protists).
+The genomes are saved under the ncbi director. For example, if you run:
+updateGenomes.pl protists
+
+The resulting genomes will be here:
+ncbi/Protists
+
