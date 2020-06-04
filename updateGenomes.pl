@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 use strict;
 use Digest::MD5 qw(md5_hex);
@@ -7,9 +7,10 @@ my $trygroup = shift @ARGV;
 
 my @acceptable = qw(
                        prokaryotes
-                       plants
-                       fungi
                        animals
+                       fungi
+                       plants
+                       protists
                );
 my $acceptable = join("|",@acceptable);
 

@@ -6,7 +6,7 @@ ncbi/genomeInfo
 
 Now, those files are used by the program: "updateGenomes.pl" which will retrieve genomes from NCBI's refseq by reading the necesssary info in those files. This program has options.
 
-1. It requires the user to type, as first argument, either of [prokaryotes|plants|fungi|animals]
+1. It requires the user to type, as first argument, either of [prokaryotes|animals|fungi|plants|protists]
 2. It can accept, after the first argument, a list of genome status [Complete|Chromosome|Scaffold|Contig]. In the absence of this argument, the program willl retreieve all of them.
 
 So, for example, if the user wanted all the Complete prokaryotic genomes, this command would do (after running updateGenomeInfo.pl with no arguments):
