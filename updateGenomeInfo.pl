@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 use strict;
 my $print = $ARGV[0] eq "print" ? 1 : 0;
