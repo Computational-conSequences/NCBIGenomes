@@ -77,25 +77,18 @@ for my $status ( @status ) {
 my $maxTries = 5;
 $maxTries++;
 
-my $rsyncMD5 =  'rsync -aqzL'
-    . ' --timeout=15 --contimeout=10 '
-    . ' ';
+my $rsyncMD5
+    = qq(rsync -aqL)
+    . qq( --timeout=15 --contimeout=10 )
+    . qq( );
 
-my $rsyncCmd =  'rsync -aqzL'
-    . ' --timeout=15 --contimeout=10'
-    . ' --include="*_assembly_stats.txt"'
-    . ' --include="*_assembly_regions.txt"'
-    . ' --include="*_genomic.fna.gz"'
-    . ' --include="*_genomic.gbff.gz"'
-    . ' --include="*_genomic.gff.gz"'
-    . ' --include="*_protein.faa.gz"'
-    . ' --include="*_rna.fna.gz"'
-    . ' --include="md5checksums.txt"'
-    . ' --exclude="*/"'
-    . ' --exclude="*"'
-    . ' --delete --delete-excluded'
-    . ' --prune-empty-dirs'
-    . ' ';
+my $rsyncCmd
+    = qq(rsync -aqL)
+    . qq( --timeout=15 --contimeout=10)
+    . qq( --exclude='*/')
+    . qq( --delete --delete-excluded)
+    . qq( --prune-empty-dirs)
+    . qq( );
 
 ### indexes for each necessary item
 #my ($iGroup,$iAssembly,$iStatus)
@@ -157,7 +150,7 @@ while(<$ASSEM>) {
     my @items = split(/\t/,$_);
     ### item 10 is version status, we only want "latest"
     next ASSEMBLY if( $items[10] ne "latest");
-    my $rsync_path = $items[19] =~ m{ftp://} ? $items[19] : "none";
+    my $rsync_path = $items[19] =~ m{(https|ftp)://} ? $items[19] : "none";
     next ASSEMBLY if( $rsync_path eq "none");
     my $assembly_accession = $items[0];
     my $assembly_id = $items[17];
@@ -168,7 +161,7 @@ while(<$ASSEM>) {
         : "none";
     next ASSEMBLY if( $status eq "none" );
     ##### we want to use rsync, rather than ftp or wget
-    $rsync_path =~ s{ftp}{rsync}g;
+    $rsync_path =~ s{https|ftp}{rsync}g;
     my $local_subdir = $assembly_accession;
     $genome_info{"$assembly_accession"} = $_;
     if( length("$local_subdir") > 1 ) {
@@ -218,8 +211,8 @@ open( my $BORRADOR,">","$logDir/eraser-$group.log" );
 for my $status ( @status ) {
     open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
     print {$STATUSF} $head_info;
-    my $status_dir = join("/",$localGnms,$status);
-    opendir( my $CHECKD,"$status_dir" );
+    my $statusDir = join("/",$localGnms,$status);
+    opendir( my $CHECKD,"$statusDir" );
     my @subdirs = grep{ m{^[A-Z]} } readdir($CHECKD);
     closedir($CHECKD);
     for my $subdir ( @subdirs ) {
@@ -227,7 +220,7 @@ for my $status ( @status ) {
             print {$STATUSF} $genome_info{"$subdir"},"\n";
         }
         else {
-            print {$BORRADOR} "rm -rf $status_dir/$subdir\n";
+            print {$BORRADOR} "rm -rf $statusDir/$subdir\n";
         }
     }
     close($STATUSF);
