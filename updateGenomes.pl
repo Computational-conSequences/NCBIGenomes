@@ -272,7 +272,12 @@ close($ASSEM);
 #### now let's check if all directories correspond to bichos in use
 #### erase otherwise
 print "   checking for genomes to erase\n";
-open( my $BORRADOR,">","$logDir/eraser-$group.log" );
+my $toerase = 0;
+my $erasefl = "$logDir/eraser-$group.log";
+if( -f "$erasefl" ) {
+    unlink("$erasefl");
+}
+open( my $BORRADOR,">","$erasefl.tmp" );
 for my $status ( @status ) {
     open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
     print {$STATUSF} $head_info;
@@ -286,11 +291,19 @@ for my $status ( @status ) {
         }
         else {
             print {$BORRADOR} "rm -rf $statusDir/$subdir\n";
+            $toerase++;
         }
     }
     close($STATUSF);
 }
 close($BORRADOR);
+if( $toerase > 0 ) {
+    rename("$erasefl.tmp","$erasefl");
+}
+else{
+    print "nothing to erase\n";
+    unlink("$erasefl.tmp");
+}
 print "\n\tdone with $0\n\n";
 
 sub check_md5s {
