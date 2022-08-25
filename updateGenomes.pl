@@ -2,8 +2,7 @@
 
 use strict;
 use Digest::MD5 qw(md5_hex);
-### group of genomes to bring
-my $trygroup = shift @ARGV;
+use Getopt::Long;
 
 my @acceptable = qw(
                        prokaryotes
@@ -14,12 +13,54 @@ my @acceptable = qw(
                );
 my $acceptable = join("|",@acceptable);
 
-my $group
-    = $trygroup =~ m{^($acceptable)$}i ? lc($1) : "none";
-if( $group eq "none" ) {
-    die "    the first argument should be the group to download:\n"
-        . "        [$acceptable]";
+my @allstatus = qw(
+                   Complete
+                   Chromosome
+                   Scaffold
+                   Contig
+           );
+my $allstatus = join("|",@allstatus);
+my @status    = ();
+my $group     = '';
+my $dry       = 'T';
+
+my $ownname = $0;
+$ownname =~ s{\s+/}{};
+
+my $helpMsg
+    = qq(about:\n)
+    . qq(  This program downloads genomes from NCBI's RefSeq database\n\n)
+    . qq(usage:\n)
+    . qq(    $ownname -g [group] [options]\n\n)
+    . qq(options:\n)
+    . qq(   -g group to download [$acceptable],\n)
+    . qq(      required\n)
+    . qq(   -s status to download [$allstatus], can be\n)
+    . qq(      more than one, default: $status[0]\n)
+    . qq(   -n run a dry run indicating no longer available genomes [T|F],\n)
+    . qq(      default: $dry\n)
+    ;
+
+my $options = GetOptions(
+    "g=s"    => \$group,
+    "s=s{,}" => \@status,
+    "n=s"    => \$dry,
+) or die "$helpMsg";
+
+if( !$group ) {
+    die
+        "    You should indicate a group to download:\n"
+        . "        [$acceptable]\n"
+        . $helpMsg;
 }
+if( $group !~ m{^($acceptable)$}i ) {
+    die
+        "    $group is not an acceptable option:\n"
+        . "        [$acceptable]\n"
+        . $helpMsg;
+}
+$group = lc($group);
+
 my $groupMatch = ucfirst($group);
 my $localDir   = "ncbi";
 my $localLists = $localDir . "/genomeInfo";
@@ -27,68 +68,34 @@ my $localGnms  = $localDir . "/$groupMatch";
 my $listFile
     = $group eq "prokaryotes" ? "$localLists/$group.txt"
     : "$localLists/eukaryotes.txt";
+my $assemblyfile
+    = "$localLists/assembly_summary_refseq.txt";
 my $logDir     = "ncbi/logs";
-unless( -d "$localDir" ){
-    system "mkdir -p $localGnms" unless( -d "$localGnms");
-}
-unless( -d "$logDir" ){
-    mkdir("$logDir") unless( -d "$logDir");
-}
 
-### directories for each status
-my @allStatus = qw(
-                   Complete
-                   Chromosome
-                   Scaffold
-                   Contig
-              );
-
-my @status = ();
-my @preferred = @ARGV;
-my $countpref = @preferred;
-if( $countpref > 0 ) {
-    for my $try ( @preferred ) {
-        if( my @matches = grep { m{\b$try\b}i } @allStatus ) {
-            print $matches[0], " matched\n";
-            push(@status,$matches[0]);
+if( !@status || grep { m{^all$} } @status ) {
+    @status = @allstatus;
+}
+else {
+    my $countpref = @status;
+    my @newstatus = ();
+    if( $countpref > 0 ) {
+        for my $try ( @status ) {
+            if( my @matches = grep { m{\b$try\b}i } @allstatus ) {
+                print $matches[0], " matched\n";
+                push(@newstatus,$matches[0]);
+            }
         }
     }
-}
-
-my $countadded = @status;
-if( $countadded == 0 ) {
-    if( $countpref > 0 ) {
-        die "  your arguments are not genome status:\n"
-            . "       [" . join("|",@allStatus) . "]";
+    my $countadded = @newstatus;
+    if( $countadded == 0 ) {
+        if( $countpref > 0 ) {
+            die "  @status are not genome status:\n"
+                . "      [$allstatus]\n";
+        }
     }
-    else {
-        push(@status,@allStatus);
-    }
+    @status = @newstatus;
 }
-
-my $matcher = join("|",@status);
-print $matcher,"<--what we will match\n";
-
-for my $status ( @status ) {
-    system("mkdir -p $localGnms/$status")
-        unless( -d "$localGnms/$status" );
-}
-
-my $maxTries = 5;
-$maxTries++;
-
-my $rsyncMD5
-    = qq(rsync -aqL)
-    . qq( --timeout=15 --contimeout=10 )
-    . qq( );
-
-my $rsyncCmd
-    = qq(rsync -aqL)
-    . qq( --timeout=15 --contimeout=10)
-    . qq( --exclude='*/')
-    . qq( --delete --delete-excluded)
-    . qq( --prune-empty-dirs)
-    . qq( );
+$dry = $dry =~ m{^(T|F)$}i ? uc($1): 'T';
 
 ### indexes for each necessary item
 #my ($iGroup,$iAssembly,$iStatus)
@@ -100,7 +107,8 @@ my $iStatus   = '';
 my $iAssembly = '';
 my %count     = ();
 my %status    = ();
-open( my $GNMS,"<","$listFile" );
+open( my $GNMS,"<","$listFile" )
+    or die "I need a $listFile (run updateGenomeInfo.pl first)\n";
 GNMLINE:
 while(<$GNMS>) {
     chomp;
@@ -132,6 +140,43 @@ while(<$GNMS>) {
 }
 close($GNMS);
 
+if( $dry eq "T" ) {
+    print "will only enlist md5 download commands for $group\n";
+}
+else {
+    print "will download $group\n";
+}
+my $matcher = join("|",@status);
+print $matcher,"<--status to match\n";
+
+unless( -d "$localDir" ){
+    system "mkdir -p $localGnms" unless( -d "$localGnms");
+}
+unless( -d "$logDir" ){
+    mkdir("$logDir") unless( -d "$logDir");
+}
+
+for my $status ( @status ) {
+    system("mkdir -p $localGnms/$status")
+        unless( -d "$localGnms/$status" );
+}
+
+my $maxTries = 5;
+$maxTries++;
+
+my $rsyncMD5
+    = qq(rsync -aqL)
+    . qq( --timeout=15 --contimeout=10 )
+    . qq( );
+
+my $rsyncCmd
+    = qq(rsync -aqL)
+    . qq( --timeout=15 --contimeout=10)
+    . qq( --exclude='*/')
+    . qq( --delete --delete-excluded)
+    . qq( --prune-empty-dirs)
+    . qq( );
+
 for my $status ( sort keys %count ) {
     print join("\t",$status,$count{"$status"}),"\n";
 }
@@ -139,7 +184,7 @@ for my $status ( sort keys %count ) {
 ### open assembly report to learn path to sequences/genome files
 my %genome_info = ();
 my $head_info   = "";
-open( my $ASSEM,"<","$localLists/assembly_summary_refseq.txt" );
+open( my $ASSEM,"<","$assemblyfile" );
 ASSEMBLY:
 while(<$ASSEM>) {
     if( m{^#} ) {
@@ -170,31 +215,37 @@ while(<$ASSEM>) {
         ##### remote files are the same as the local files
         my $returnStatus = 1;
         my $tries        = 1;
-        while( $returnStatus != 0 && $tries < $maxTries ) {
-            print "   bringing md5checksums $local_subdir (try $tries)\n";
-            if( $tries > 1 ) {
-                sleep 60;
-            }
-            $returnStatus =
-                system "$rsyncMD5 $rsync_path/md5checksums.txt $local_path/ 1>/dev/null";
-            $tries++;
-        }
-        ##### now let's check with new md5 file:
-        if( check_md5s("$local_path") ) {
-            ## if it works, it means all files are fine
-            ## thus, do nothing here
+        my $md5command
+            = "$rsyncMD5 $rsync_path/md5checksums.txt $local_path/ 1>/dev/null";
+        if( $dry eq 'T' ) {
+            print $md5command,"\n";
         }
         else {
-            my $returnStatus2 = 1;
-            my $tries2        = 1;
-            while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
-                print "      bringing genome files $local_subdir (try $tries2)\n";
-                if( $tries2 > 1 ) {
+            while( $returnStatus != 0 && $tries < $maxTries ) {
+                print "   bringing md5checksums $local_subdir (try $tries)\n";
+                if( $tries > 1 ) {
                     sleep 60;
                 }
-                $returnStatus2 =
-                    system "$rsyncCmd $rsync_path/ $local_path 1>/dev/null";
-                $tries2++;
+                $returnStatus = qx($md5command);
+                $tries++;
+            }
+            ##### now let's check with new md5 file:
+            if( check_md5s("$local_path") ) {
+                ## if it works, it means all files are fine
+                ## thus, do nothing here
+            }
+            else {
+                my $returnStatus2 = 1;
+                my $tries2        = 1;
+                while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
+                    print "      bringing genome files $local_subdir (try $tries2)\n";
+                    if( $tries2 > 1 ) {
+                        sleep 60;
+                    }
+                    $returnStatus2 =
+                        system "$rsyncCmd $rsync_path/ $local_path 1>/dev/null";
+                    $tries2++;
+                }
             }
         }
     }
