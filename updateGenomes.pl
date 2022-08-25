@@ -23,6 +23,7 @@ my $allstatus = join("|",@allstatus);
 my @status    = ();
 my $group     = '';
 my $dry       = 'T';
+my $new       = 'F';
 
 my $ownname = $0;
 $ownname =~ s{\s+/}{};
@@ -37,14 +38,18 @@ my $helpMsg
     . qq(      required\n)
     . qq(   -s status to download [$allstatus], can be\n)
     . qq(      more than one, default: $status[0]\n)
-    . qq(   -n run a dry run indicating no longer available genomes [T|F],\n)
+    . qq(   -d run a dry run indicating no longer available genomes [T|F],\n)
     . qq(      default: $dry\n)
+    . qq(   -n only bring new genomes, don't update present ones [T|F],\n)
+    . qq(      default: $new\n)
+    . qq(\n)
     ;
 
 my $options = GetOptions(
     "g=s"    => \$group,
     "s=s{,}" => \@status,
-    "n=s"    => \$dry,
+    "d=s"    => \$dry,
+    "n=s"    => \$new,
 ) or die "$helpMsg";
 
 if( !$group ) {
@@ -96,6 +101,7 @@ else {
     @status = @newstatus;
 }
 $dry = $dry =~ m{^(T|F)$}i ? uc($1): 'T';
+$new = $new =~ m{^(T|F)$}i ? uc($1): 'F';
 
 ### indexes for each necessary item
 #my ($iGroup,$iAssembly,$iStatus)
@@ -148,7 +154,12 @@ else {
 }
 my $matcher = join("|",@status);
 print $matcher,"<--status to match\n";
-
+if( $new eq 'T' ) {
+    print "will download new files, won't update already present\n";
+}
+else {
+    print "will run a complete update\n";
+}
 unless( -d "$localDir" ){
     system "mkdir -p $localGnms" unless( -d "$localGnms");
 }
@@ -211,6 +222,9 @@ while(<$ASSEM>) {
     $genome_info{"$assembly_accession"} = $_;
     if( length("$local_subdir") > 1 ) {
         my $local_path = join("/",$localGnms,$status,$local_subdir);
+        if( $new eq 'T' && -d "$local_path" ) {
+            next ASSEMBLY;
+        }
         ##### added to make sure newed md5 file helps discover if the
         ##### remote files are the same as the local files
         my $returnStatus = 1;
