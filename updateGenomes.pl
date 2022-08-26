@@ -298,6 +298,7 @@ for my $status ( @status ) {
 }
 close($BORRADOR);
 if( $toerase > 0 ) {
+    print "$toerase directories to erase\n";
     rename("$erasefl.tmp","$erasefl");
 }
 else{
