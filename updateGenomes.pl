@@ -37,7 +37,7 @@ my $helpMsg
     . qq(   -g group to download [$acceptable],\n)
     . qq(      required\n)
     . qq(   -s status to download [$allstatus], can be\n)
-    . qq(      more than one, default: $status[0]\n)
+    . qq(      more than one, default: @allstatus\n)
     . qq(   -d run a dry run indicating no longer available genomes [T|F],\n)
     . qq(      default: $dry\n)
     . qq(   -n only bring new genomes, don't update present ones [T|F],\n)
