@@ -21,7 +21,7 @@ If you want to try a small set of genomes:
 
 updateGenomes.pl -g prokaryotes -s Chromosome -d F -n F
 
-The genomes are saved under the ncbi director. For example, if you run:
+The genomes are saved under the ncbi directory. For example, if you run:
 
 updateGenomes.pl -g protists -d F -n F
 
