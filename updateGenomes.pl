@@ -260,7 +260,7 @@ while(<$ASSEM>) {
                         sleep 60;
                     }
                     $returnStatus2 =
-                        system "$rsyncCmd $rsync_path/ $local_path 1>/dev/null";
+                        qx($rsyncCmd $rsync_path/ $local_path 1>/dev/null);
                     $tries2++;
                 }
             }
