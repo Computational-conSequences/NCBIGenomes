@@ -19,11 +19,14 @@ my @allstatus = qw(
                    Scaffold
                    Contig
            );
+
+my $defDry    = 'T';
+my $defNew    = 'T';
 my $allstatus = join("|",@allstatus);
 my @status    = ();
 my $group     = '';
-my $dry       = 'T';
-my $new       = 'F';
+my $dry       = $defDry;
+my $new       = $defNew;
 
 my $ownname = $0;
 $ownname =~ s{\s+/}{};
@@ -39,9 +42,9 @@ my $helpMsg
     . qq(   -s status to download [$allstatus], can be\n)
     . qq(      more than one, default: @allstatus\n)
     . qq(   -d run a dry run indicating no longer available genomes [T|F],\n)
-    . qq(      default: $dry\n)
+    . qq(      default: $defDry\n)
     . qq(   -n only bring new genomes, don't update present ones [T|F],\n)
-    . qq(      default: $new\n)
+    . qq(      default: $defNew\n)
     . qq(\n)
     ;
 
@@ -100,8 +103,8 @@ else {
     }
     @status = @newstatus;
 }
-$dry = $dry =~ m{^(T|F)$}i ? uc($1): 'T';
-$new = $new =~ m{^(T|F)$}i ? uc($1): 'F';
+$dry = $dry =~ m{^(T|F)$}i ? uc($1): $defDry;
+$new = $new =~ m{^(T|F)$}i ? uc($1): $defNew;
 
 ### indexes for each necessary item
 #my ($iGroup,$iAssembly,$iStatus)
