@@ -14,11 +14,11 @@ my @acceptable = qw(
 my $acceptable = join("|",@acceptable);
 
 my @allstatus = qw(
-                   Complete
-                   Chromosome
-                   Scaffold
-                   Contig
-           );
+                      Complete
+                      Chromosome
+                      Scaffold
+                      Contig
+              );
 
 my $defDry    = 'T';
 my $defNew    = 'T';
@@ -239,7 +239,7 @@ while(<$ASSEM>) {
         }
         else {
             while( $returnStatus != 0 && $tries < $maxTries ) {
-                print "   bringing md5checksums $local_subdir (try $tries)\n";
+                print "   bringing md5checksums $local_subdir $status (try $tries)\n";
                 if( $tries > 1 ) {
                     sleep 60;
                 }
@@ -255,7 +255,7 @@ while(<$ASSEM>) {
                 my $returnStatus2 = 1;
                 my $tries2        = 1;
                 while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
-                    print "      bringing genome files $local_subdir (try $tries2)\n";
+                    print "      bringing genome files $local_subdir $status (try $tries2)\n";
                     if( $tries2 > 1 ) {
                         sleep 60;
                     }
