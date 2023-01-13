@@ -276,6 +276,7 @@ close($ASSEM);
 #### erase otherwise
 print "   checking for genomes to erase\n";
 my $toerase = 0;
+my $tokeep  = 0;
 my $erasefl = "$logDir/eraser-$group.log";
 if( -f "$erasefl" ) {
     unlink("$erasefl");
@@ -291,6 +292,7 @@ for my $status ( @status ) {
     for my $subdir ( @subdirs ) {
         if( length($genome_info{"$subdir"}) > 0 ) {
             print {$STATUSF} $genome_info{"$subdir"},"\n";
+            $tokeep++;
         }
         else {
             print {$BORRADOR} "rm -rf $statusDir/$subdir\n";
@@ -302,10 +304,12 @@ for my $status ( @status ) {
 close($BORRADOR);
 if( $toerase > 0 ) {
     print "$toerase directories to erase\n";
+    print "$tokeep directories to keep\n";
     rename("$erasefl.tmp","$erasefl");
 }
 else{
     print "nothing to erase\n";
+    print "$tokeep directories to keep\n";
     unlink("$erasefl.tmp");
 }
 print "\n\tdone with $0\n\n";
