@@ -103,6 +103,9 @@ else {
     }
     @status = @newstatus;
 }
+my $statusMatch = join("|",@status);
+print $statusMatch,"<--status to match\n";
+
 $dry = $dry =~ m{^(T|F)$}i ? uc($1): $defDry;
 $new = $new =~ m{^(T|F)$}i ? uc($1): $defNew;
 
@@ -116,6 +119,7 @@ my $iStatus   = '';
 my $iAssembly = '';
 my %count     = ();
 my %status    = ();
+print "reading full genome list:\n  $listFile\n";
 open( my $GNMS,"<","$listFile" )
     or die "I need a $listFile (run updateGenomeInfo.pl first)\n";
 GNMLINE:
@@ -141,7 +145,12 @@ while(<$GNMS>) {
                 next GNMLINE ;
             }
         }
-        my $status     = $items[$iStatus];
+        my $status
+            = $items[$iStatus] =~ m{$statusMatch}i ? ucfirst(lc($&))
+            : 'none';
+        if( $status eq 'none' ) {
+            next GNMLINE;
+        }
         my $assemblyID = $items[$iAssembly];
         $count{"$status"}++;
         $status{"$assemblyID"} = $status;
@@ -155,8 +164,6 @@ if( $dry eq "T" ) {
 else {
     print "will download $group\n";
 }
-my $matcher = join("|",@status);
-print $matcher,"<--status to match\n";
 if( $new eq 'T' ) {
     print "will download new files, won't update already present\n";
 }
@@ -191,8 +198,9 @@ my $rsyncCmd
     . qq( --prune-empty-dirs)
     . qq( );
 
+print "The whole genome files contain:\n";
 for my $status ( sort keys %count ) {
-    print join("\t",$status,$count{"$status"}),"\n";
+    print join(" ",$count{"$status"},$status,"genomes"),"\n";
 }
 
 ### open assembly report to learn path to sequences/genome files
@@ -216,7 +224,7 @@ while(<$ASSEM>) {
     ##### by checking the status I'm also checking that this is one of the
     ##### the genomes I want to download
     my $status
-        = $status{"$assembly_id"} =~ m{$matcher} ? $&
+        = $status{"$assembly_id"} =~ m{$statusMatch} ? $&
         : "none";
     next ASSEMBLY if( $status eq "none" );
     ##### we want to use rsync, rather than ftp or wget
