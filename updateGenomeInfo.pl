@@ -12,13 +12,20 @@ my $taxonomyDir   = $ncbiDir   . "/pub/taxonomy";
 my $localDir      = "ncbi";
 my $localTaxonomy = "ncbi/taxonomy";
 my $localLists    = "ncbi/genomeInfo";
+my $rsync = qq(rsync -avzL);
+    my $longoptions
+        = qq(--exclude="prok_*" )
+        . qq(--exclude="CLADES/" )
+        . qq(--exclude="MARKERS/" )
+        . qq(--delete-excluded )
+        . qq($genomeDir/GENOME_REPORTS/);
 
 #### retrieve reports
 if( $print > 0 ) {
-    print "rsync -avz  $genomeDir/GENOME_REPORTS/ $localLists\n";
-    print "rsync -avzL $refseqDir/assembly_summary_refseq.txt $localLists/\n";
-    print "rsync -avzL $refseqDir/README.txt $localLists/README-refseq.txt\n";
-    #print "rsync -avzL $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/\n";
+    print "$rsync $longoptions $localLists\n";
+    print "$rsync $refseqDir/assembly_summary_refseq.txt $localLists/\n";
+    print "$rsync $refseqDir/README.txt $localLists/README-refseq.txt\n";
+    #print "$rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/\n";
 }
 else {
     unless( -d "$localDir" ){
@@ -26,8 +33,15 @@ else {
         system "mkdir -p $localLists"    unless( -d "$localLists");
         #system "mkdir -p $localTaxonomy" unless( -d "$localTaxonomy");
     }
-    system qq(rsync -avz  --exclude="prok_*" --exclude="CLADES/" --exclude="MARKERS/" --delete-excluded $genomeDir/GENOME_REPORTS/ $localLists);
-    system "rsync -avzL $refseqDir/assembly_summary_refseq.txt $localLists/";
-    system "rsync -avzL $refseqDir/README.txt $localLists/README-refseq.txt";
-    #system "rsync -avzL $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/";
+    print "running:\n$rsync $longoptions $localLists\n";
+    my $genomeReports
+        = qx($rsync $longoptions $localLists);
+    print "running:\n$rsync $refseqDir/assembly_summary_refseq.txt $localLists/\n";
+    my $assemblysumm
+        = qx($rsync $refseqDir/assembly_summary_refseq.txt $localLists/);
+    print "running:\n$rsync $refseqDir/README.txt $localLists/README-refseq.txt\n";
+    my $readme
+        = qx($rsync $refseqDir/README.txt $localLists/README-refseq.txt);
+    #print "$rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/\n";
+    #my $tax = qx($rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/);
 }
