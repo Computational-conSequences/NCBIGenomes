@@ -127,7 +127,17 @@ else {
 ############# are in the group we want
 ########################################################################
 print "reading full genome list:\n  $listFile\n";
-my( $refCount,$refStatus ) = readGlist("$listFile","$statusMatch");
+my( $refCount,$reforigStatus ) = readGlist("$listFile","$statusMatch");
+print "The whole genome files contain:\n";
+for my $status ( @status ) {
+    if( exists $refCount->{"$status"} ) {
+        print "   ",join(" ",$refCount->{"$status"},$status,"genomes"),"\n";
+    }
+}
+
+print "finding corresponding refSeq genomes:\n";
+my ($heading,$refInfo,$refStatus)
+    = readRefSeq($assemblyfile,$refCount,$reforigStatus);
 
 ########################################################################
 ######### make directories for results
@@ -139,111 +149,19 @@ unless( -d "$logDir" ){
     mkdir("$logDir") unless( -d "$logDir");
 }
 
+########################################################################
+######## verify and bring genomes:
+########################################################################
+print "downloading from RefSeq:\n";
 for my $status ( @status ) {
-    system("mkdir -p $localGnms/$status")
-        unless( -d "$localGnms/$status" );
-}
-
-########################################################################
-######## start working
-########################################################################
-my $maxTries = 5;
-$maxTries++;
-
-my $rsyncMD5
-    = qq(rsync -aqL)
-    . qq( --timeout=15 --contimeout=10 )
-    . qq( );
-
-my $rsyncCmd
-    = qq(rsync -aqL)
-    . qq( --timeout=15 --contimeout=10)
-    . qq( --exclude='*/')
-    . qq( --delete --delete-excluded)
-    . qq( --prune-empty-dirs)
-    . qq( );
-
-print "The whole genome files contain:\n";
-for my $status ( sort keys %{$refCount} ) {
-    print join(" ",$refCount->{"$status"},$status,"genomes"),"\n";
-}
-
-### open assembly report to learn path to sequences/genome files
-my %genome_info = ();
-my $head_info   = "";
-open( my $ASSEM,"<","$assemblyfile" );
-ASSEMBLY:
-while(<$ASSEM>) {
-    if( m{^#} ) {
-        $head_info .= $_;
-        next ASSEMBLY;
-    }
-    chomp;
-    my @items = split(/\t/,$_);
-    ### item 10 is version status, we only want "latest"
-    next ASSEMBLY if( $items[10] ne "latest");
-    my $rsync_path = $items[19] =~ m{(https|ftp)://} ? $items[19] : "none";
-    next ASSEMBLY if( $rsync_path eq "none");
-    my $assembly_accession = $items[0];
-    my $assembly_id = $items[17];
-    ##### by checking the status I'm also checking that this is one of the
-    ##### the genomes I want to download
-    my $status
-        = $refStatus->{"$assembly_id"} =~ m{$statusMatch} ? $&
-        : "none";
-    next ASSEMBLY if( $status eq "none" );
-    ##### we want to use rsync, rather than ftp or wget
-    $rsync_path =~ s{https|ftp}{rsync}g;
-    my $local_subdir = $assembly_accession;
-    $genome_info{"$assembly_accession"} = $_;
-    if( length("$local_subdir") > 1 ) {
-        my $local_path = join("/",$localGnms,$status,$local_subdir);
-        if( $new eq 'T' && -d "$local_path" ) {
-            next ASSEMBLY;
-        }
-        ##### added to make sure newed md5 file helps discover if the
-        ##### remote files are the same as the local files
-        my $returnStatus = 1;
-        my $tries        = 1;
-        my $md5command
-            = "$rsyncMD5 $rsync_path/md5checksums.txt $local_path/ 1>/dev/null";
-        if( $dry eq 'T' ) {
-            print $md5command,"\n";
-        }
-        else {
-            while( $returnStatus != 0 && $tries < $maxTries ) {
-                print "   bringing md5checksums $local_subdir $status (try $tries)\n";
-                if( $tries > 1 ) {
-                    sleep 60;
-                }
-                $returnStatus = qx($md5command);
-                $tries++;
-            }
-            ##### now let's check with new md5 file:
-            if( check_md5s("$local_path") ) {
-                ## if it works, it means all files are fine
-                ## thus, do nothing here
-            }
-            else {
-                my $returnStatus2 = 1;
-                my $tries2        = 1;
-                while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
-                    print "      bringing genome files $local_subdir $status (try $tries2)\n";
-                    if( $tries2 > 1 ) {
-                        sleep 60;
-                    }
-                    $returnStatus2 =
-                        qx($rsyncCmd $rsync_path/ $local_path 1>/dev/null);
-                    $tries2++;
-                }
-            }
-        }
-    }
-    else {
-        print "problem with $assembly_id\n";
+    my @ids = sort grep { $refStatus->{"$_"} eq "$status" } keys %{ $refInfo };
+    my $count = @ids;
+    if( $count > 0 ) {
+        print "   ",join(" ","found",$count,$status,"genomes at RefSeq"),"\n";
+        system("mkdir -p $localGnms/$status") unless( -d "$localGnms/$status" );
+        bringGenomes($status,\@ids,$refInfo);
     }
 }
-close($ASSEM);
 
 #### now let's check if all directories correspond to bichos in use
 #### erase otherwise
@@ -257,14 +175,14 @@ if( -f "$erasefl" ) {
 open( my $BORRADOR,">","$erasefl.tmp" );
 for my $status ( @status ) {
     open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
-    print {$STATUSF} $head_info;
+    print {$STATUSF} $heading;
     my $statusDir = join("/",$localGnms,$status);
     opendir( my $CHECKD,"$statusDir" );
     my @subdirs = grep{ m{^[A-Z]} } readdir($CHECKD);
     closedir($CHECKD);
     for my $subdir ( @subdirs ) {
-        if( length($genome_info{"$subdir"}) > 0 ) {
-            print {$STATUSF} $genome_info{"$subdir"},"\n";
+        if( exists $refInfo->{"$subdir"} ) {
+            print {$STATUSF} $refInfo->{"$subdir"},"\n";
             $tokeep++;
         }
         else {
@@ -288,9 +206,9 @@ else{
 print "\n\tdone with $0\n\n";
 
 sub check_md5s {
-    my $local_path = $_[0];
-    if( -d "$local_path" ) {
-        my $md5file = $local_path . "/md5checksums.txt";
+    my $localPath = $_[0];
+    if( -d "$localPath" ) {
+        my $md5file = $localPath . "/md5checksums.txt";
         if( -f "$md5file" ) {
             my %md5sum = ();
             open( my $MD5F,"<","$md5file" );
@@ -302,14 +220,14 @@ sub check_md5s {
             }
             close($MD5F);
             ### learn file names
-            opendir( my $LOCALD,"$local_path");
+            opendir( my $LOCALD,"$localPath");
             my @files2check = grep { m{\.gz$} } readdir($LOCALD);
             closedir($LOCALD);
             my $count_f = @files2check;
             if( $count_f > 0 ) {
                 my $failed = 0;
                 for my $file2check ( @files2check ) {
-                    my $full_file = $local_path . "/" . $file2check;
+                    my $full_file = $localPath . "/" . $file2check;
                     open( my $FL2CH,"<","$full_file" );
                     binmode($FL2CH);
                     my $md5sum = Digest::MD5->new->addfile($FL2CH)->hexdigest;
@@ -391,5 +309,118 @@ sub readGlist {
     }
     else {
         return();
+    }
+}
+
+sub readRefSeq {
+    my($assemblyFile,$refCount,$refStatus) = @_;
+    ### open assembly report to learn path to sequences/genome files
+    my %genomeInfo = ();
+    my %status     = ();
+    my $headInfo   = "";
+    open( my $ASSEM,"<","$assemblyFile" );
+  ASSEMBLY:
+    while(<$ASSEM>) {
+        if( m{^#} ) {
+            $headInfo .= $_;
+            next ASSEMBLY;
+        }
+        chomp;
+        my @items = split(/\t/,$_);
+        ### item 10 is version status, we only want "latest"
+        next ASSEMBLY if( $items[10] ne "latest");
+        my $rsyncPath = $items[19] =~ m{(https|ftp)://} ? $items[19] : "none";
+        next ASSEMBLY if( $rsyncPath eq "none");
+        my $assembly_accession = $items[0];
+        my $assembly_id = $items[17];
+        ##### by checking the status I'm also checking that this is one of the
+        ##### the genomes I want to download
+        my $status
+            = $refStatus->{"$assembly_id"} =~ m{$statusMatch} ? $&
+            : "none";
+        next ASSEMBLY if( $status eq "none" );
+        ##### we want to use rsync, rather than ftp or wget
+        $rsyncPath =~ s{https|ftp}{rsync}g;
+        my $local_subdir = $assembly_accession;
+        $genomeInfo{"$assembly_accession"} = $_;
+        $status{"$assembly_accession"}     = $status;
+    }
+    close($ASSEM);
+    my $clines = keys %genomeInfo;
+    if( $clines > 0 ) {
+        return($headInfo,\%genomeInfo,\%status);
+    }
+}
+
+sub bringGenomes {
+    my ($status,$refIDs,$refInfo) = @_;
+    my $maxTries = 5;
+    my $rsyncMD5
+        = qq(rsync -aqL)
+        . qq( --timeout=15 --contimeout=10 )
+        . qq( );
+    my $rsyncCmd
+        = qq(rsync -aqL)
+        . qq( --timeout=15 --contimeout=10)
+        . qq( --exclude='*/')
+        . qq( --delete --delete-excluded)
+        . qq( --prune-empty-dirs)
+        . qq( );
+  ASSSEMBLYID:
+    for my $gnmID ( @{ $refIDs } ) {
+        my $info = $refInfo->{"$gnmID"};
+        my @items = split(/\t/,$info);
+        my $rsyncPath = $items[19];
+        my $assembly_accession = $items[0];
+        my $assembly_id = $items[17];
+        ##### we want to use rsync, rather than ftp or wget
+        $rsyncPath =~ s{https|ftp}{rsync}g;
+        my $local_subdir = $assembly_accession;
+        if( length("$local_subdir") > 1 ) {
+            my $localPath = join("/",$localGnms,$status,$local_subdir);
+            if( $new eq 'T' && -d "$localPath" ) {
+                next ASSEMBLYID;
+            }
+            ##### added to make sure newed md5 file helps discover if the
+            ##### remote files are the same as the local files
+            my $returnStatus = 1;
+            my $tries        = 1;
+            my $md5command
+                = "$rsyncMD5 $rsyncPath/md5checksums.txt $localPath/ 1>/dev/null";
+            if( $dry eq 'T' ) {
+                print $md5command,"\n";
+            }
+            else {
+                while( $returnStatus != 0 && $tries < $maxTries ) {
+                    print "   bringing md5checksums $local_subdir $status (try $tries)\n";
+                    if( $tries > 1 ) {
+                        sleep 60;
+                    }
+                    $returnStatus = qx($md5command);
+                    $tries++;
+                }
+                ##### now let's check with new md5 file:
+                if( check_md5s("$localPath") ) {
+                    ## if it works, it means all files are fine
+                    ## thus, do nothing here
+                }
+                else {
+                    my $returnStatus2 = 1;
+                    my $tries2        = 1;
+                    while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
+                        print "      bringing genome files $local_subdir $status (try $tries2)\n";
+                        if( $tries2 > 1 ) {
+                            sleep 60;
+                        }
+                        $returnStatus2 =
+                            qx($rsyncCmd $rsyncPath/ $localPath 1>/dev/null);
+                        $tries2++;
+                    }
+                }
+            }
+        }
+        else {
+            print "problem with $assembly_id\n";
+        }
     }
 }
