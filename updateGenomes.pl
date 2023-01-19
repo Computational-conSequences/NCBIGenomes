@@ -366,7 +366,7 @@ sub bringGenomes {
         . qq( --delete --delete-excluded)
         . qq( --prune-empty-dirs)
         . qq( );
-  ASSSEMBLYID:
+  ASSEMBLYID:
     for my $gnmID ( @{ $refIDs } ) {
         my $info = $refInfo->{"$gnmID"};
         my @items = split(/\t/,$info);
