@@ -387,7 +387,7 @@ sub readGlist {
     close($GNMS);
     my $cstatus = keys %status;
     if( $cstatus > 0 ) {
-        return(\%status,\%count);
+        return(\%count,\%status);
     }
     else {
         return();
