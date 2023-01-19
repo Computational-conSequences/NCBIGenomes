@@ -127,18 +127,34 @@ else {
 ############# are in the group we want
 ########################################################################
 print "reading full genome list:\n  $listFile\n";
-my( $refCount,$reforigStatus ) = readGlist("$listFile","$statusMatch");
-print "The whole genome files contain:\n";
+my( $reforigCount,$reforigStatus ) = readGlist("$listFile","$statusMatch");
+print "the whole genome files contain:\n";
 for my $status ( @status ) {
-    if( exists $refCount->{"$status"} ) {
-        print "   ",join(" ",$refCount->{"$status"},$status,"genomes"),"\n";
+    if( exists $reforigCount->{"$status"} ) {
+        print "   ",join(" ",$reforigCount->{"$status"},$status,"genomes"),"\n";
     }
 }
 
-print "finding corresponding refSeq genomes:\n";
-my ($heading,$refInfo,$refStatus)
-    = readRefSeq($assemblyfile,$refCount,$reforigStatus);
-
+print "finding corresponding RefSeq genomes:\n";
+my ($heading,$refInfo,$refStatus,$refCount)
+    = readRefSeq($assemblyfile,$reforigCount,$reforigStatus);
+my $total2get = 0;
+print "the RefSeq genome database contains:\n";
+for my $status ( @status ) {
+    if( exists $reforigCount->{"$status"} ) {
+        my $refseq
+            = exists $refCount->{"$status"} ? $refCount->{"$status"}: 0;
+        print "   ",join(" ",$refseq,"of",
+                         $reforigCount->{"$status"},$status,"genomes"),"\n";
+        $total2get += $refseq;
+    }
+}
+if( $total2get < 1 ) {
+    die "no genomes to download\n";
+}
+else {
+    print "will download $total2get genomes from RefSeq\n";
+}
 ########################################################################
 ######### make directories for results
 ########################################################################
@@ -157,7 +173,8 @@ for my $status ( @status ) {
     my @ids = sort grep { $refStatus->{"$_"} eq "$status" } keys %{ $refInfo };
     my $count = @ids;
     if( $count > 0 ) {
-        print "   ",join(" ","found",$count,$status,"genomes at RefSeq"),"\n";
+        print "  ",join(" ","downloading",$count,$status,
+                         "genomes from RefSeq"),"\n";
         system("mkdir -p $localGnms/$status") unless( -d "$localGnms/$status" );
         bringGenomes($status,\@ids,$refInfo);
     }
@@ -316,6 +333,7 @@ sub readRefSeq {
     my($assemblyFile,$refCount,$refStatus) = @_;
     ### open assembly report to learn path to sequences/genome files
     my %genomeInfo = ();
+    my %count     = ();
     my %status     = ();
     my $headInfo   = "";
     open( my $ASSEM,"<","$assemblyFile" );
@@ -344,11 +362,12 @@ sub readRefSeq {
         my $local_subdir = $assembly_accession;
         $genomeInfo{"$assembly_accession"} = $_;
         $status{"$assembly_accession"}     = $status;
+        $count{"$status"}++;
     }
     close($ASSEM);
     my $clines = keys %genomeInfo;
     if( $clines > 0 ) {
-        return($headInfo,\%genomeInfo,\%status);
+        return($headInfo,\%genomeInfo,\%status,\%count);
     }
 }
 
