@@ -109,55 +109,6 @@ print $statusMatch,"<--status to match\n";
 $dry = $dry =~ m{^(T|F)$}i ? uc($1): $defDry;
 $new = $new =~ m{^(T|F)$}i ? uc($1): $defNew;
 
-### indexes for each necessary item
-#my ($iGroup,$iAssembly,$iStatus)
-#    = $group eq "prokaryotes" ? ("NA",18,15) : (4,8,16);
-### open reports to learn genome status
-### to hold the indexes for the different items we care about:
-my $iGroup    = '';
-my $iStatus   = '';
-my $iAssembly = '';
-my %count     = ();
-my %status    = ();
-print "reading full genome list:\n  $listFile\n";
-open( my $GNMS,"<","$listFile" )
-    or die "I need a $listFile (run updateGenomeInfo.pl first)\n";
-GNMLINE:
-while(<$GNMS>) {
-    chomp;
-    my @items = split(/\t/,$_);
-    if(  m{^#} ) {
-        for my $index ( 0 .. $#items ) {
-            if( $items[$index] =~ m{^Group} ) {
-                $iGroup = $index;
-            }
-            if( $items[$index] =~ m{^Status} ) {
-                $iStatus = $index;
-            }
-            if( $items[$index] =~ m{^Assembly} ) {
-                $iAssembly = $index;
-            }
-        }
-    }
-    else {
-        if( $group ne "prokaryotes" ) {
-            unless( $items[$iGroup] eq "$groupMatch" ) {
-                next GNMLINE ;
-            }
-        }
-        my $status
-            = $items[$iStatus] =~ m{$statusMatch}i ? ucfirst(lc($&))
-            : 'none';
-        if( $status eq 'none' ) {
-            next GNMLINE;
-        }
-        my $assemblyID = $items[$iAssembly];
-        $count{"$status"}++;
-        $status{"$assemblyID"} = $status;
-    }
-}
-close($GNMS);
-
 if( $dry eq "T" ) {
     print "will only enlist md5 download commands for $group\n";
 }
@@ -170,6 +121,17 @@ if( $new eq 'T' ) {
 else {
     print "will run a complete update\n";
 }
+
+########################################################################
+############# reading the list of genomes to ensure we know which ones
+############# are in the group we want
+########################################################################
+print "reading full genome list:\n  $listFile\n";
+my( $refCount,$refStatus ) = readGlist("$listFile","$statusMatch");
+
+########################################################################
+######### make directories for results
+########################################################################
 unless( -d "$localDir" ){
     system "mkdir -p $localGnms" unless( -d "$localGnms");
 }
@@ -182,6 +144,9 @@ for my $status ( @status ) {
         unless( -d "$localGnms/$status" );
 }
 
+########################################################################
+######## start working
+########################################################################
 my $maxTries = 5;
 $maxTries++;
 
@@ -199,8 +164,8 @@ my $rsyncCmd
     . qq( );
 
 print "The whole genome files contain:\n";
-for my $status ( sort keys %count ) {
-    print join(" ",$count{"$status"},$status,"genomes"),"\n";
+for my $status ( sort keys %{$refCount} ) {
+    print join(" ",$refCount->{"$status"},$status,"genomes"),"\n";
 }
 
 ### open assembly report to learn path to sequences/genome files
@@ -224,7 +189,7 @@ while(<$ASSEM>) {
     ##### by checking the status I'm also checking that this is one of the
     ##### the genomes I want to download
     my $status
-        = $status{"$assembly_id"} =~ m{$statusMatch} ? $&
+        = $refStatus->{"$assembly_id"} =~ m{$statusMatch} ? $&
         : "none";
     next ASSEMBLY if( $status eq "none" );
     ##### we want to use rsync, rather than ftp or wget
@@ -368,6 +333,61 @@ sub check_md5s {
         else {
             return();
         }
+    }
+    else {
+        return();
+    }
+}
+
+sub readGlist {
+    my($listFile,$statusMatch) = @_;
+    ### indexes for each necessary item
+    my $iGroup    = '';
+    my $iStatus   = '';
+    my $iAssembly = '';
+    ### to save the data:
+    my %count     = ();
+    my %status    = ();
+    open( my $GNMS,"<","$listFile" )
+        or die "I need a $listFile (run updateGenomeInfo.pl first)\n";
+  GNMLINE:
+    while(<$GNMS>) {
+        chomp;
+        my @items = split(/\t/,$_);
+        if(  m{^#} ) {
+            for my $index ( 0 .. $#items ) {
+                if( $items[$index] =~ m{^Group} ) {
+                    $iGroup = $index;
+                }
+                if( $items[$index] =~ m{^Status} ) {
+                    $iStatus = $index;
+                }
+                if( $items[$index] =~ m{^Assembly} ) {
+                    $iAssembly = $index;
+                }
+            }
+        }
+        else {
+            if( $group ne "prokaryotes" ) {
+                unless( $items[$iGroup] eq "$groupMatch" ) {
+                    next GNMLINE ;
+                }
+            }
+            my $status
+                = $items[$iStatus] =~ m{$statusMatch}i ? ucfirst(lc($&))
+                : 'none';
+            if( $status eq 'none' ) {
+                next GNMLINE;
+            }
+            my $assemblyID = $items[$iAssembly];
+            $count{"$status"}++;
+            $status{"$assemblyID"} = $status;
+        }
+    }
+    close($GNMS);
+    my $cstatus = keys %status;
+    if( $cstatus > 0 ) {
+        return(\%status,\%count);
     }
     else {
         return();
