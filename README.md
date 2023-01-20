@@ -15,8 +15,6 @@ So, for example, if the user wanted all the Complete prokaryotic genomes, this c
 
 updateGenomes.pl -g prokaryotes -s Complete -d F -n F
 
-There's no dry option, there's no much in terms of warnings, etc.
-
 If you want to try a small set of genomes:
 
 updateGenomes.pl -g prokaryotes -s Chromosome -d F -n F
