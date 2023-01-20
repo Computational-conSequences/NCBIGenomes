@@ -413,9 +413,10 @@ sub bringGenomes {
                 while( $returnStatus != 0 && $tries < $maxTries ) {
                     print "   bringing md5checksums $local_subdir $status (try $tries)\n";
                     if( $tries > 1 ) {
-                        sleep 60;
+                        sleep 15;
                     }
-                    $returnStatus = qx($md5command);
+                    my $output = qx($md5command);
+                    $returnStatus = $?;
                     $tries++;
                 }
                 ##### now let's check with new md5 file:
@@ -424,16 +425,17 @@ sub bringGenomes {
                     ## thus, do nothing here
                 }
                 else {
-                    my $returnStatus2 = 1;
-                    my $tries2        = 1;
-                    while( $returnStatus2 != 0 && $tries2 < $maxTries ) {
-                        print "      bringing genome files $local_subdir $status (try $tries2)\n";
-                        if( $tries2 > 1 ) {
-                            sleep 60;
+                    my $returnStatus = 1;
+                    my $tries        = 1;
+                    while( $returnStatus != 0 && $tries < $maxTries ) {
+                        print "      bringing genome files $local_subdir $status (try $tries)\n";
+                        if( $tries > 1 ) {
+                            sleep 15;
                         }
-                        $returnStatus2 =
-                            qx($rsyncCmd $rsyncPath/ $localPath 1>/dev/null);
-                        $tries2++;
+                        my $output
+                            = qx($rsyncCmd $rsyncPath/ $localPath 1>/dev/null);
+                        $returnStatus = $?;
+                        $tries++;
                     }
                 }
             }
