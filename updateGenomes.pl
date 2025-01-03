@@ -4,13 +4,21 @@ use strict;
 use Digest::MD5 qw(md5_hex);
 use Getopt::Long;
 
-my @acceptable = qw(
-                       prokaryotes
-                       animals
-                       fungi
-                       plants
-                       protists
-               );
+my $localDir    = "ncbi";
+my $localLists  = $localDir . "/genomeInfo";
+
+my $listEukarya = "$localLists/eukaryotes.txt";
+my $refEukarya  = readEukaryots($listEukarya);
+my @acceptable = ("prokaryotes",@{ $refEukarya });
+
+# my @acceptable = qw(
+#                        prokaryotes
+#                        animals
+#                        fungi
+#                        plants
+#                        protists
+#                );
+
 my $acceptable = join("|",@acceptable);
 
 my @allstatus = qw(
@@ -70,8 +78,6 @@ if( $group !~ m{^($acceptable)$}i ) {
 $group = lc($group);
 
 my $groupMatch = ucfirst($group);
-my $localDir   = "ncbi";
-my $localLists = $localDir . "/genomeInfo";
 my $localGnms  = $localDir . "/$groupMatch";
 my $listFile
     = $group eq "prokaryotes" ? "$localLists/$group.txt"
@@ -443,5 +449,41 @@ sub bringGenomes {
         else {
             print "problem with $assembly_id\n";
         }
+    }
+}
+
+sub readEukaryots {
+    my $list = $_[0];
+    ### indexes for each necessary item
+    my $iGroup    = '';
+    ### to save the data:
+    my %count     = ();
+    #print "finding eukaryotic groups:\n";
+    open( my $GNMS,"<","$list" )
+        or die "I need a $list (run updateGenomeInfo.pl first)\n";
+  GNMLINE:
+    while(<$GNMS>) {
+        chomp;
+        my @items = split(/\t/,$_);
+        if(  m{^#} ) {
+            for my $index ( 0 .. $#items ) {
+                if( $items[$index] =~ m{^Group} ) {
+                    $iGroup = $index;
+                }
+            }
+        }
+        else {
+            $count{"$items[$iGroup]"}++;
+        }
+    }
+    close($GNMS);
+    my @eukgroups = sort keys %count;
+    my $count     = @eukgroups;
+    #print "found $count eukaryotic groups\n";
+    if( $count > 0 ) {
+        return(\@eukgroups);
+    }
+    else {
+        return();
     }
 }
