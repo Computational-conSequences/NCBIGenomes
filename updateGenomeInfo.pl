@@ -88,16 +88,17 @@ sub bringTaxonomy {
             push(@tobring,$txid);
             $count++;
         }
-        if( $count == $setLn
-            || $txid == $txids->[-1] ) {
-            print "bringing $count tax IDs\n";
-            my $hashedTI = getTaxonomy(@tobring);
-            $count = 0;
-            @tobring = ();
-            for my $taxid ( sort { $a <=> $b } keys %{ $hashedTI } ) {
-                print {$OTI} "Main TaxID\t$taxid\n",$hashedTI->{"$taxid"};
+        if( $count == $setLn || $txid == $txids->[-1] ) {
+            if( $count > 0 ) {
+                print "bringing $count tax IDs\n";
+                my $hashedTI = getTaxonomy(@tobring);
+                $count = 0;
+                @tobring = ();
+                for my $taxid ( sort { $a <=> $b } keys %{ $hashedTI } ) {
+                    print {$OTI} "Main TaxID\t$taxid\n",$hashedTI->{"$taxid"};
+                }
+                sleep($takeNap);
             }
-            sleep($takeNap);
         }
     }
     close($OTI);
