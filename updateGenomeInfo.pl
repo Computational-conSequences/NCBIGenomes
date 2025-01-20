@@ -3,6 +3,7 @@
 use strict;
 use Bio::DB::EUtilities;
 use XML::Simple;
+use File::Temp qw( tempfile tempdir );
 #use Data::Dumper;
 
 my $print = $ARGV[0] eq "print" ? 1 : 0;
@@ -35,8 +36,9 @@ my $rsync = qq(rsync -avzL);
         = qq(--exclude="prok_*" )
         . qq(--exclude="CLADES/" )
         . qq(--exclude="MARKERS/" )
-        . qq(--delete-excluded )
         . qq($genomeDir/GENOME_REPORTS/);
+# deleted option:
+#        . qq(--delete-excluded )
 
 #### retrieve reports
 if( $print > 0 ) {
@@ -73,27 +75,54 @@ sub bringTaxonomy {
     my $count   = 0;
     my @tobring = ();
     my $outtaxid = "$localLists/taxonomy.info";
+    print "   will save tax IDs to $outtaxid.bz2\n";
+    my $refdone = ( -f "$outtaxid.bz2" ) ? checkTaxID("$outtaxid.bz2") : ();
     open( my $OTI,">","$outtaxid.tmp" );
   TXID:
     for my $txid ( @{ $txids } ) {
         #print $txid,"\n";
-        push(@tobring,$txid);
-        $count++;
+        if( exists $refdone->{"$txid"} ) {
+            print {$OTI} "Main TaxID\t$txid\n",$refdone->{"$txid"};
+        }
+        else {
+            push(@tobring,$txid);
+            $count++;
+        }
         if( $count == $setLn
             || $txid == $txids->[-1] ) {
-            print "bringing $count genomes\n";
+            print "bringing $count tax IDs\n";
             my $hashedTI = getTaxonomy(@tobring);
             $count = 0;
             @tobring = ();
             for my $taxid ( sort { $a <=> $b } keys %{ $hashedTI } ) {
-                print {$OTI} "Main TaxID\t$taxid\n",$hashedTI->{"$taxid"},"\n";
+                print {$OTI} "Main TaxID\t$taxid\n",$hashedTI->{"$taxid"};
             }
             sleep($takeNap);
         }
     }
     close($OTI);
     rename("$outtaxid.tmp","$outtaxid");
-    system("bzip2 --best $outtaxid");
+    system("bzip2 -f --best $outtaxid");
+}
+
+sub checkTaxID {
+    my $taxfile = $_[0];
+    my %txinfo  = ();
+    my $currentid = '';
+    print "   reading $taxfile\n";
+    open( my $TID,"-|","bzip2 -qdc $taxfile" );
+    while(<$TID>) {
+        if( m{^Main\s+TaxID\s+(\d+)} ) {
+            $currentid = $1;
+        }
+        else {
+            $txinfo{"$currentid"} .= $_;
+        }
+    }
+    close($TID);
+    my $count = keys %txinfo;
+    print "found $count already downloaded tax IDs\n";
+    return(\%txinfo);
 }
 
 sub findTaxIDs {
@@ -189,7 +218,7 @@ sub getTaxonomy {
             . join("\t","FullTaxInfo",$lineage_a) . "\n"
             . join("\t","BasicTaxInfo",$lineage)  . "\n"
             . join("\t","Rank","ScientificName","TaxId") . "\n"
-            . join("\n",@fullInfo);
+            . join("\n",@fullInfo)."\n";
         $fullInfo{"$test_xid"} = $jointInfo;
         ##return("$lineage_a","$lineage","$scientific","$test_xid",\@fullInfo);
     }
