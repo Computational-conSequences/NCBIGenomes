@@ -6,18 +6,13 @@ use Getopt::Long;
 
 my $localDir    = "ncbi";
 my $localLists  = $localDir . "/genomeInfo";
+my $taxidfile = "$localLists/taxonomy.info.bz2";
 
-my $listEukarya = "$localLists/eukaryotes.txt";
-my $refEukarya  = readEukaryots($listEukarya);
-my @acceptable = ("prokaryotes",@{ $refEukarya });
-
-# my @acceptable = qw(
-#                        prokaryotes
-#                        animals
-#                        fungi
-#                        plants
-#                        protists
-#                );
+my @acceptable = qw(
+                       Archaea
+                       Bacteria
+                       Eukaryota
+               );
 
 my $acceptable = join("|",@acceptable);
 
@@ -79,9 +74,6 @@ $group = lc($group);
 
 my $groupMatch = ucfirst($group);
 my $localGnms  = $localDir . "/$groupMatch";
-my $listFile
-    = $group eq "prokaryotes" ? "$localLists/$group.txt"
-    : "$localLists/eukaryotes.txt";
 my $assemblyfile
     = "$localLists/assembly_summary_refseq.txt";
 my $logDir     = "ncbi/logs";
@@ -132,27 +124,19 @@ else {
 ############# reading the list of genomes to ensure we know which ones
 ############# are in the group we want
 ########################################################################
-print "reading full genome list:\n  $listFile\n";
-my( $reforigCount,$reforigStatus ) = readGlist("$listFile","$statusMatch");
-print "the whole genome files contain:\n";
-for my $status ( @status ) {
-    if( exists $reforigCount->{"$status"} ) {
-        print "   ",join(" ",$reforigCount->{"$status"},$status,"genomes"),"\n";
-    }
-}
+print "learning taxIDs:\n  $taxidfile\n";
+my $refTaxID = readTaxID("$taxidfile","$groupMatch");
 
 print "finding corresponding RefSeq genomes:\n";
 my ($heading,$refInfo,$refStatus,$refCount)
-    = readRefSeq($assemblyfile,$reforigCount,$reforigStatus);
+    = readRefSeq($assemblyfile,$refTaxID);
 my $total2get = 0;
 print "the RefSeq genome database contains:\n";
 for my $status ( @status ) {
-    if( exists $reforigCount->{"$status"} ) {
-        my $refseq
-            = exists $refCount->{"$status"} ? $refCount->{"$status"}: 0;
-        print "   ",join(" ",$refseq,"of",
-                         $reforigCount->{"$status"},$status,"genomes"),"\n";
-        $total2get += $refseq;
+    if( exists $refCount->{"$status"} ) {
+        print "   there's ",join(" ",
+                         $refCount->{"$status"},$status,"genomes"),"\n";
+        $total2get += $refCount->{"$status"};
     }
 }
 if( $total2get < 1 ) {
@@ -280,63 +264,31 @@ sub check_md5s {
     }
 }
 
-sub readGlist {
-    my($listFile,$statusMatch) = @_;
-    ### indexes for each necessary item
-    my $iGroup    = '';
-    my $iStatus   = '';
-    my $iAssembly = '';
-    ### to save the data:
-    my %count     = ();
-    my %status    = ();
-    open( my $GNMS,"<","$listFile" )
-        or die "I need a $listFile (run updateGenomeInfo.pl first)\n";
-  GNMLINE:
-    while(<$GNMS>) {
-        chomp;
-        my @items = split(/\t/,$_);
-        if(  m{^#} ) {
-            for my $index ( 0 .. $#items ) {
-                if( $items[$index] =~ m{^Group} ) {
-                    $iGroup = $index;
-                }
-                if( $items[$index] =~ m{^Status} ) {
-                    $iStatus = $index;
-                }
-                if( $items[$index] =~ m{^Assembly} ) {
-                    $iAssembly = $index;
-                }
+sub readTaxID {
+    my ( $taxfile,$group ) = @_;
+    my %txinfo  = ();
+    my $currentid = '';
+    print "   reading $taxfile\n";
+    open( my $TID,"-|","bzip2 -qdc $taxfile" );
+    while(<$TID>) {
+        if( m{^Main\s+TaxID\s+(\d+)} ) {
+            $currentid = $1;
+        }
+        elsif( m{^superkingdom\s+} ) {
+            my($label,$checkgrp,$nn) = split;
+            if( $checkgrp =~ m{^$group$} ) {
+                $txinfo{"$currentid"}++;
             }
         }
-        else {
-            if( $group ne "prokaryotes" ) {
-                unless( $items[$iGroup] eq "$groupMatch" ) {
-                    next GNMLINE ;
-                }
-            }
-            my $status
-                = $items[$iStatus] =~ m{$statusMatch}i ? ucfirst(lc($&))
-                : 'none';
-            if( $status eq 'none' ) {
-                next GNMLINE;
-            }
-            my $assemblyID = $items[$iAssembly];
-            $count{"$status"}++;
-            $status{"$assemblyID"} = $status;
-        }
     }
-    close($GNMS);
-    my $cstatus = keys %status;
-    if( $cstatus > 0 ) {
-        return(\%count,\%status);
-    }
-    else {
-        return();
-    }
+    close($TID);
+    my $count = keys %txinfo;
+    print "found $count tax IDs for $group\n";
+    return(\%txinfo);
 }
 
 sub readRefSeq {
-    my($assemblyFile,$refCount,$refStatus) = @_;
+    my($assemblyFile,$reftaxa) = @_;
     ### open assembly report to learn path to sequences/genome files
     my %genomeInfo = ();
     my %count     = ();
@@ -351,16 +303,17 @@ sub readRefSeq {
         }
         chomp;
         my @items = split(/\t/,$_);
+        ### we only want those matching the taxIDs of genomes in group
+        if( ! exists $reftaxa->{"$items[5]"} ) {
+            next ASSEMBLY;
+        }
         ### item 10 is version status, we only want "latest"
         next ASSEMBLY if( $items[10] ne "latest");
         my $rsyncPath = $items[19] =~ m{(https|ftp)://} ? $items[19] : "none";
         next ASSEMBLY if( $rsyncPath eq "none");
         my $assembly_accession = $items[0];
-        my $assembly_id = $items[17];
-        ##### by checking the status I'm also checking that this is one of the
-        ##### the genomes I want to download
         my $status
-            = $refStatus->{"$assembly_id"} =~ m{$statusMatch} ? $&
+            = $items[11] =~ m{$statusMatch} ? $&
             : "none";
         next ASSEMBLY if( $status eq "none" );
         ##### we want to use rsync, rather than ftp or wget
@@ -378,7 +331,7 @@ sub readRefSeq {
 }
 
 sub bringGenomes {
-    my ($status,$refIDs,$refInfo) = @_;
+    my ( $status,$refIDs,$refInfo ) = @_;
     my $maxTries = 5;
     my $rsyncMD5
         = qq(rsync -aqL)
@@ -486,4 +439,8 @@ sub readEukaryots {
     else {
         return();
     }
+}
+
+sub learnTaxIDs {
+
 }
