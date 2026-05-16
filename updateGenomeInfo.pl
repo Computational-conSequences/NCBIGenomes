@@ -23,47 +23,37 @@ my @cleanTaxonomy = qw(
 my $cleanTaxonomy = join("|",@cleanTaxonomy);
 
 ## remote
-my $ncbiDir       = "rsync://rsync.ncbi.nlm.nih.gov";
+my $ncbiDir       = "https://ftp.ncbi.nlm.nih.gov";
 my $genomeDir     = $ncbiDir   . "/genomes";
 my $refseqDir     = $genomeDir . "/refseq";
 my $taxonomyDir   = $ncbiDir   . "/pub/taxonomy";
 ## here
 my $localDir      = "ncbi";
-my $localTaxonomy = "ncbi/taxonomy";
 my $localLists    = "ncbi/genomeInfo";
-my $rsync = qq(rsync -avzL);
-    my $longoptions
-        = qq(--exclude="prok_*" )
-        . qq(--exclude="CLADES/" )
-        . qq(--exclude="MARKERS/" )
-        . qq($genomeDir/GENOME_REPORTS/);
-# deleted option:
-#        . qq(--delete-excluded )
+my $ftp = qq(wget -N);
+
+mkdir("$localLists") unless( -d "$localLists" );
 
 #### retrieve reports
 if( $print > 0 ) {
-    print "$rsync $longoptions $localLists\n";
-    print "$rsync $refseqDir/assembly_summary_refseq.txt $localLists/\n";
-    print "$rsync $refseqDir/README.txt $localLists/README-refseq.txt\n";
-    #print "$rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/\n";
+    print "$ftp $refseqDir/assembly_summary_refseq.txt -P $localLists/\n";
+    print "$ftp $refseqDir/README.txt $localLists/README-refseq.txt\n";
 }
 else {
     unless( -d "$localDir" ){
         system "mkdir -p $localDir"      unless( -d "$localDir");
         system "mkdir -p $localLists"    unless( -d "$localLists");
-        #system "mkdir -p $localTaxonomy" unless( -d "$localTaxonomy");
     }
-    print "running:\n$rsync $longoptions $localLists\n";
-    my $genomeReports
-        = qx($rsync $longoptions $localLists);
-    print "running:\n$rsync $refseqDir/assembly_summary_refseq.txt $localLists/\n";
+    print
+        "running:\n"
+        . "$ftp $refseqDir/assembly_summary_refseq.txt -P $localLists/\n";
     my $assemblysumm
-        = qx($rsync $refseqDir/assembly_summary_refseq.txt $localLists/);
-    print "running:\n$rsync $refseqDir/README.txt $localLists/README-refseq.txt\n";
+        = qx($ftp $refseqDir/assembly_summary_refseq.txt -P $localLists/);
+    print
+        "running:\n"
+        . "$ftp $refseqDir/README.txt $localLists/README-refseq.txt\n";
     my $readme
-        = qx($rsync $refseqDir/README.txt $localLists/README-refseq.txt);
-    #print "$rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/\n";
-    #my $tax = qx($rsync $taxonomyDir/'taxdump.tar.gz*' $localTaxonomy/);
+        = qx($ftp $refseqDir/README.txt -O $localLists/README-refseq.txt);
 }
 
 my $refTI = findTaxIDs("$localLists/assembly_summary_refseq.txt");
