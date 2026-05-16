@@ -67,6 +67,7 @@ sub bringTaxonomy {
     my $outtaxid = "$localLists/taxonomy.info";
     print "   will save tax IDs to $outtaxid.bz2\n";
     my $refdone = ( -f "$outtaxid.bz2" ) ? checkTaxID("$outtaxid.bz2") : ();
+    my $countback = @{ $txids };
     open( my $OTI,">","$outtaxid.tmp" );
   TXID:
     for my $txid ( @{ $txids } ) {
@@ -80,9 +81,11 @@ sub bringTaxonomy {
         }
         if( $count == $setLn || $txid == $txids->[-1] ) {
             if( $count > 0 ) {
-                print "bringing $count tax IDs\n";
+                print "bringing $count tax IDs of $countback\n";
                 my $hashedTI = getTaxonomy(@tobring);
-                $count = 0;
+                my $done = @tobring;
+                $countback -= $done;
+                $count   = 0;
                 @tobring = ();
                 for my $taxid ( sort { $a <=> $b } keys %{ $hashedTI } ) {
                     print {$OTI} "Main TaxID\t$taxid\n",$hashedTI->{"$taxid"};
