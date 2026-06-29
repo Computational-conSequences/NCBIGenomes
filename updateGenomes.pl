@@ -274,7 +274,7 @@ sub readTaxID {
         if( m{^Main\s+TaxID\s+(\d+)} ) {
             $currentid = $1;
         }
-        elsif( m{^superkingdom\s+} ) {
+        elsif( m{^(domain|superkingdom)\s+} ) {
             my($label,$checkgrp,$nn) = split;
             if( $checkgrp =~ m{^$group$} ) {
                 $txinfo{"$currentid"}++;
@@ -316,8 +316,6 @@ sub readRefSeq {
             = $items[11] =~ m{$statusMatch} ? $&
             : "none";
         next ASSEMBLY if( $status eq "none" );
-        ##### we want to use rsync, rather than ftp or wget
-        $rsyncPath =~ s{https|ftp}{rsync}g;
         my $local_subdir = $assembly_accession;
         $genomeInfo{"$assembly_accession"} = $_;
         $status{"$assembly_accession"}     = $status;
@@ -333,26 +331,26 @@ sub readRefSeq {
 sub bringGenomes {
     my ( $status,$refIDs,$refInfo ) = @_;
     my $maxTries = 5;
-    my $rsyncMD5
-        = qq(rsync -aqL)
-        . qq( --timeout=15 --contimeout=10 )
+    my $wgetMD5
+        = qq(wget --https-only -N )
+        . qq(--user-agent='Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4')
+        . qq( --timeout=15 --connect-timeout=10 )
         . qq( );
-    my $rsyncCmd
-        = qq(rsync -aqL)
-        . qq( --timeout=15 --contimeout=10)
-        . qq( --exclude='*/')
-        . qq( --delete --delete-excluded)
-        . qq( --prune-empty-dirs)
+    my $wgetCmd
+        = qq(wget --https-only -Nr -np -l 1 )
+        . qq(--user-agent='Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4')
+        . qq( --timeout=15 --connect-timeout=10 )
         . qq( );
   ASSEMBLYID:
     for my $gnmID ( @{ $refIDs } ) {
         my $info = $refInfo->{"$gnmID"};
         my @items = split(/\t/,$info);
-        my $rsyncPath = $items[19];
+        my $wgetPath = $items[19];
+        my $ignorepaths = $wgetPath =~ tr{/}{/};
+        $ignorepaths - 3;
         my $assembly_accession = $items[0];
         my $assembly_id = $items[17];
-        ##### we want to use rsync, rather than ftp or wget
-        $rsyncPath =~ s{https|ftp}{rsync}g;
+        ##### we want to use wget, rather than ftp or wget
         my $local_subdir = $assembly_accession;
         if( length("$local_subdir") > 1 ) {
             my $localPath = join("/",$localGnms,$status,$local_subdir);
@@ -364,9 +362,11 @@ sub bringGenomes {
             my $returnStatus = 1;
             my $tries        = 1;
             my $md5command
-                = "$rsyncMD5 $rsyncPath/md5checksums.txt $localPath/ 1>/dev/null";
+                = "$wgetMD5 $wgetPath/md5checksums.txt -P $localPath/ 1>/dev/null";
+            my $gnmCmd = qq($wgetCmd --cut-dirs=$ignorepaths $wgetPath/ -P $localPath 1>/dev/null);
             if( $dry eq 'T' ) {
                 print $md5command,"\n";
+                print $gnmCmd,"\n";
             }
             else {
                 while( $returnStatus != 0 && $tries < $maxTries ) {
@@ -392,7 +392,7 @@ sub bringGenomes {
                             sleep 15;
                         }
                         my $output
-                            = qx($rsyncCmd $rsyncPath/ $localPath 1>/dev/null);
+                            = qx($gnmCmd);
                         $returnStatus = $?;
                         $tries++;
                     }
