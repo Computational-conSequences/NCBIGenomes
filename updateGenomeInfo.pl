@@ -9,7 +9,7 @@ use File::Temp qw( tempfile tempdir );
 my $print = $ARGV[0] eq "print" ? 1 : 0;
 
 #### for taxonomy stuff
-my $setLn   = 2000;
+my $setLn   = 10000;
 my $takeNap = 5;
 my @cleanTaxonomy = qw(
                           group
