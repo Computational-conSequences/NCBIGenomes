@@ -12,8 +12,8 @@ echo "downloading $BICHO genomes"
 datasets download genome accession --inputfile DataSets/$DATA.list --include all --dehydrated --filename DataSets/$DATA.zip
 unzip DataSets/$DATA.zip -d NCBI
 echo "Extracting stuff"
-datasets rehydrate --directory NCBI
-datasets rehydrate --directory NCBI
+datasets rehydrate --gzip --directory NCBI
+datasets rehydrate --gzip --directory NCBI
 
 for EXT in cds faa fna gbff gff gtf
 do
@@ -23,19 +23,12 @@ done
 for GCF in $(\ls NCBI/ncbi_dataset/data)
 do
     echo "working with $GCF"
-    mv NCBI/ncbi_dataset/data/$GCF/$GCF*_genomic.fna fna-${DATA}/$GCF:r.fna
-    mv NCBI/ncbi_dataset/data/$GCF/cds_from_genomic.fna cds-${DATA}/$GCF:r.cds
-    mv NCBI/ncbi_dataset/data/$GCF/protein.faa faa-${DATA}/$GCF:r.faa
+    mv NCBI/ncbi_dataset/data/$GCF/$GCF*_genomic.fna.gz fna-${DATA}/$GCF:r.fna.gz
+    mv NCBI/ncbi_dataset/data/$GCF/cds_from_genomic.fna.gz cds-${DATA}/$GCF:r.cds.gz
+    mv NCBI/ncbi_dataset/data/$GCF/protein.faa.gz faa-${DATA}/$GCF:r.faa.gz
     for EXT in gbff gff gtf
     do
-        mv NCBI/ncbi_dataset/data/$GCF/genomic.$EXT ${EXT}-${DATA}/$GCF:r.$EXT
+        mv NCBI/ncbi_dataset/data/$GCF/genomic.$EXT.gz ${EXT}-${DATA}/$GCF:r.$EXT.gz
     done
 done
 rm -r NCBI
-
-echo "compressing files"
-for EXT in cds faa fna gbff gff gtf
-do
-    echo "compressing files in ${EXT}-${DATA}"
-    gzip -f --best ${EXT}-${DATA}/*.$EXT
-done
