@@ -8,13 +8,23 @@ my $localDir    = "ncbi";
 my $localLists  = $localDir . "/genomeInfo";
 my $taxidfile = "$localLists/taxonomy.info.bz2";
 
-my @acceptable = qw(
-                       Archaea
-                       Bacteria
-                       Eukaryota
-               );
+my @prokas = qw(
+                   Archaea
+                   Bacteria
+           );
 
-my $acceptable = join("|",@acceptable);
+my $matchproka = join("|",@prokas);
+
+# Eukaryota
+my @eukarya = qw(
+                    fungi
+                    invertebrate
+                    plant
+                    protozoa
+                    vertebrate_mammalian
+                    vertebrate_other
+            );
+my $matcheukarya = join("|",@eukarya);
 
 my @allstatus = qw(
                       Complete
@@ -36,11 +46,12 @@ $ownname =~ s{\s+/}{};
 
 my $helpMsg
     = qq(about:\n)
-    . qq(  This program downloads genomes from NCBI's RefSeq database\n\n)
+    . qq(  This program downloads large genome collections from NCBI's RefSeq\n)
+    . qq(  database\n\n)
     . qq(usage:\n)
     . qq(    $ownname -g [group] [options]\n\n)
     . qq(options:\n)
-    . qq(   -g group to download [$acceptable],\n)
+    . qq(   -g group to download [$matchproka|Eukaryota],\n)
     . qq(      required\n)
     . qq(   -s status to download [$allstatus], can be\n)
     . qq(      more than one, default: @allstatus\n)
@@ -61,19 +72,19 @@ my $options = GetOptions(
 if( !$group ) {
     die
         "    You should indicate a group to download:\n"
-        . "        [$acceptable]\n"
+        . "        [$matchproka|Eukaryota]\n"
         . $helpMsg;
 }
-if( $group !~ m{^($acceptable)$}i ) {
+if( $group !~ m{^($matchproka|Eukaryota)$}i ) {
     die
         "    $group is not an acceptable option:\n"
-        . "        [$acceptable]\n"
+        . "        [$matchproka|Eukaryota]\n"
         . $helpMsg;
 }
 $group = lc($group);
 
-my $groupMatch = ucfirst($group);
-my $localGnms  = $localDir . "/$groupMatch";
+my $matchGroup = ucfirst($group);
+my $localGnms  = $localDir . "/$matchGroup";
 my $assemblyfile
     = "$localLists/assembly_summary_refseq.txt";
 my $logDir     = "ncbi/logs";
@@ -124,12 +135,14 @@ else {
 ############# reading the list of genomes to ensure we know which ones
 ############# are in the group we want
 ########################################################################
-print "learning taxIDs:\n  $taxidfile\n";
-my $refTaxID = readTaxID("$taxidfile","$groupMatch");
+#print "learning taxIDs:\n  $taxidfile\n";
+#my $refTaxID = readTaxID("$taxidfile","$matchGroup");
 
 print "finding corresponding RefSeq genomes:\n";
+#my ($heading,$refInfo,$refStatus,$refCount)
+#    = readRefSeq($assemblyfile,$refTaxID);
 my ($heading,$refInfo,$refStatus,$refCount)
-    = readRefSeq($assemblyfile,$refTaxID);
+    = readRefSeq($assemblyfile);
 my $total2get = 0;
 print "the RefSeq genome database contains:\n";
 for my $status ( @status ) {
@@ -145,6 +158,7 @@ if( $total2get < 1 ) {
 else {
     print "will download $total2get genomes from RefSeq\n";
 }
+exit;
 ########################################################################
 ######### make directories for results
 ########################################################################
@@ -212,58 +226,6 @@ else{
 }
 print "\n\tdone with $0\n\n";
 
-sub check_md5s {
-    my $localPath = $_[0];
-    if( -d "$localPath" ) {
-        my $md5file = $localPath . "/md5checksums.txt";
-        if( -f "$md5file" ) {
-            my %md5sum = ();
-            open( my $MD5F,"<","$md5file" );
-            while(<$MD5F>) {
-                my($md5sum,$file) = split;
-                $file =~ s{.*/}{};
-                $md5sum{"$file"} = $md5sum;
-                #print join("\t",$file,$md5sum,$md5sum{"$file"}),"\n";
-            }
-            close($MD5F);
-            ### learn file names
-            opendir( my $LOCALD,"$localPath");
-            my @files2check = grep { m{\.gz$} } readdir($LOCALD);
-            closedir($LOCALD);
-            my $count_f = @files2check;
-            if( $count_f > 0 ) {
-                my $failed = 0;
-                for my $file2check ( @files2check ) {
-                    my $full_file = $localPath . "/" . $file2check;
-                    open( my $FL2CH,"<","$full_file" );
-                    binmode($FL2CH);
-                    my $md5sum = Digest::MD5->new->addfile($FL2CH)->hexdigest;
-                    close($FL2CH);
-                    if( $md5sum ne $md5sum{"$file2check"} ) {
-                        $failed++;
-                        #unlink("$full_file");
-                    }
-                }
-                if( $failed > 0 ) {
-                    return();
-                }
-                else {
-                    return("Good2go");
-                }
-            }
-            else {
-                return();
-            }
-        }
-        else {
-            return();
-        }
-    }
-    else {
-        return();
-    }
-}
-
 sub readTaxID {
     my ( $taxfile,$group ) = @_;
     my %txinfo  = ();
@@ -290,157 +252,78 @@ sub readTaxID {
 sub readRefSeq {
     my($assemblyFile,$reftaxa) = @_;
     ### open assembly report to learn path to sequences/genome files
-    my %genomeInfo = ();
-    my %count     = ();
-    my %status     = ();
-    my $headInfo   = "";
+    my %fullInfo    = ();
+    my %count       = ();
+    my %status      = ();
+    my $headInfo    = "";
+    my $taxfield    = 0;
+    my $statusfield = 0;
+    my $groupfield  = 0;
     open( my $ASSEM,"<","$assemblyFile" );
   ASSEMBLY:
     while(<$ASSEM>) {
         if( m{^#} ) {
             $headInfo .= $_;
-            next ASSEMBLY;
+            if( m{assembly_accession} ) {
+                s{^#+\s*}{};
+                chomp;
+                my @headings = split(/\t/,$_);
+                for my $index ( 0 .. $#headings ) {
+                    if( $headings[$index] eq "taxid" ) {
+                        $taxfield = $index;
+                        print "   TaxID field is $taxfield\n";
+                    }
+                    elsif( $headings[$index] eq "assembly_level" ) {
+                        $statusfield = $index;
+                        print "   Status field is $statusfield\n";
+                    }
+                    elsif( $headings[$index] eq "group" ) {
+                        $groupfield = $index;
+                        print "   Group field is $groupfield\n";
+                    }
+                }
+            }
         }
-        chomp;
-        my @items = split(/\t/,$_);
-        ### we only want those matching the taxIDs of genomes in group
-        if( ! exists $reftaxa->{"$items[5]"} ) {
-            next ASSEMBLY;
+        else {
+            chomp;
+            my @items = split(/\t/,$_);
+            ### we only want those matching the taxIDs of genomes in group
+            #if( ! exists $reftaxa->{"$items[$taxfield]"} ) {
+            #    next ASSEMBLY;
+            #}
+            if( $matchGroup eq "Eukaryota"  ) {
+                next ASSEMBLY if( ! $items[$groupfield] =~ m{$matcheukarya} );
+            }
+            else {
+                my $fixgroup = $groupfield + 1;
+                my $testgroup = $items[$groupfield];
+                if( $testgroup eq "haploid"
+                    && $items[$fixgroup] =~ m{$matchGroup}i ) {
+                    $testgroup = $items[$fixgroup];
+                }
+                next ASSEMBLY if( ! $testgroup =~ m{$matchGroup}i );
+            }
+            my $assembly = $items[0];
+            my $status
+                = $items[$statusfield] =~ m{$statusMatch} ? $&
+                : "none";
+            next ASSEMBLY if( $status eq "none");
+            $fullInfo{"$assembly"} = $_;
+            $status{"$assembly"}   = $status;
+            $count{"$status"}++;
         }
-        ### item 10 is version status, we only want "latest"
-        next ASSEMBLY if( $items[10] ne "latest");
-        my $rsyncPath = $items[19] =~ m{(https|ftp)://} ? $items[19] : "none";
-        next ASSEMBLY if( $rsyncPath eq "none");
-        my $assembly_accession = $items[0];
-        my $status
-            = $items[11] =~ m{$statusMatch} ? $&
-            : "none";
-        next ASSEMBLY if( $status eq "none" );
-        my $local_subdir = $assembly_accession;
-        $genomeInfo{"$assembly_accession"} = $_;
-        $status{"$assembly_accession"}     = $status;
-        $count{"$status"}++;
     }
     close($ASSEM);
-    my $clines = keys %genomeInfo;
+    my $clines = keys %status;
     if( $clines > 0 ) {
-        return($headInfo,\%genomeInfo,\%status,\%count);
+        return($headInfo,\%fullInfo,\%status,\%count);
     }
 }
 
 sub bringGenomes {
     my ( $status,$refIDs,$refInfo ) = @_;
     my $maxTries = 5;
-    my $wgetMD5
-        = qq(wget --https-only -N )
-        . qq(--user-agent='Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4')
-        . qq( --timeout=15 --connect-timeout=10 )
-        . qq( );
-    my $wgetCmd
-        = qq(wget --https-only -Nr -np -l 1 )
-        . qq(--user-agent='Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4')
-        . qq( --timeout=15 --connect-timeout=10 )
-        . qq( );
   ASSEMBLYID:
     for my $gnmID ( @{ $refIDs } ) {
-        my $info = $refInfo->{"$gnmID"};
-        my @items = split(/\t/,$info);
-        my $wgetPath = $items[19];
-        my $ignorepaths = $wgetPath =~ tr{/}{/};
-        $ignorepaths - 3;
-        my $assembly_accession = $items[0];
-        my $assembly_id = $items[17];
-        ##### we want to use wget, rather than ftp or wget
-        my $local_subdir = $assembly_accession;
-        if( length("$local_subdir") > 1 ) {
-            my $localPath = join("/",$localGnms,$status,$local_subdir);
-            if( $new eq 'T' && -d "$localPath" ) {
-                next ASSEMBLYID;
-            }
-            ##### added to make sure newed md5 file helps discover if the
-            ##### remote files are the same as the local files
-            my $returnStatus = 1;
-            my $tries        = 1;
-            my $md5command
-                = "$wgetMD5 $wgetPath/md5checksums.txt -P $localPath/ 1>/dev/null";
-            my $gnmCmd = qq($wgetCmd --cut-dirs=$ignorepaths $wgetPath/ -P $localPath 1>/dev/null);
-            if( $dry eq 'T' ) {
-                print $md5command,"\n";
-                print $gnmCmd,"\n";
-            }
-            else {
-                while( $returnStatus != 0 && $tries < $maxTries ) {
-                    print "   bringing md5checksums $local_subdir $status (try $tries)\n";
-                    if( $tries > 1 ) {
-                        sleep 15;
-                    }
-                    my $output = qx($md5command);
-                    $returnStatus = $?;
-                    $tries++;
-                }
-                ##### now let's check with new md5 file:
-                if( check_md5s("$localPath") ) {
-                    ## if it works, it means all files are fine
-                    ## thus, do nothing here
-                }
-                else {
-                    my $returnStatus = 1;
-                    my $tries        = 1;
-                    while( $returnStatus != 0 && $tries < $maxTries ) {
-                        print "      bringing genome files $local_subdir $status (try $tries)\n";
-                        if( $tries > 1 ) {
-                            sleep 15;
-                        }
-                        my $output
-                            = qx($gnmCmd);
-                        $returnStatus = $?;
-                        $tries++;
-                    }
-                }
-            }
-        }
-        else {
-            print "problem with $assembly_id\n";
-        }
     }
-}
-
-sub readEukaryots {
-    my $list = $_[0];
-    ### indexes for each necessary item
-    my $iGroup    = '';
-    ### to save the data:
-    my %count     = ();
-    #print "finding eukaryotic groups:\n";
-    open( my $GNMS,"<","$list" )
-        or die "I need a $list (run updateGenomeInfo.pl first)\n";
-  GNMLINE:
-    while(<$GNMS>) {
-        chomp;
-        my @items = split(/\t/,$_);
-        if(  m{^#} ) {
-            for my $index ( 0 .. $#items ) {
-                if( $items[$index] =~ m{^Group} ) {
-                    $iGroup = $index;
-                }
-            }
-        }
-        else {
-            $count{"$items[$iGroup]"}++;
-        }
-    }
-    close($GNMS);
-    my @eukgroups = sort keys %count;
-    my $count     = @eukgroups;
-    #print "found $count eukaryotic groups\n";
-    if( $count > 0 ) {
-        return(\@eukgroups);
-    }
-    else {
-        return();
-    }
-}
-
-sub learnTaxIDs {
-
 }
