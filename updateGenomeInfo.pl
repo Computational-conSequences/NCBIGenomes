@@ -121,6 +121,12 @@ sub checkTaxID {
 
 sub findTaxIDs {
     my $assemblyfile = $_[0];
+    ####### to find status (complete, scaffold, etc), the field is called
+    ####### assembly_level
+    ### 8893 Chromosome
+    ### 78627 Complete Genome
+    ### 285496 Contig
+    ### 160356 Scaffold
     open( my $ASS,"<","$assemblyfile" ) or die $!;
     my %taxid = ();
     my $taxfield = 0;
