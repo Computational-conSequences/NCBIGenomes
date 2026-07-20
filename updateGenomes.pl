@@ -149,8 +149,8 @@ print "the RefSeq genome database contains:\n";
 for my $status ( @status ) {
     if( exists $refStatus->{"$status"} ) {
         my $count = @{ $refStatus->{"$status"} };
-        print "   there's ",join(" ",
-                         $count,$status,"genomes"),"\n";
+        print join(" ",
+                   $status,"genomes",$count),"\n";
         $total2get += $count;
     }
 }
@@ -160,6 +160,54 @@ if( $total2get < 1 ) {
 else {
     print "will download $total2get genomes from RefSeq\n";
 }
+
+########################################################################
+######## check for already present genomes/genomes to erase:
+########################################################################
+#### now let's check if all directories correspond to bichos in use
+#### erase otherwise
+print "   checking for genomes to erase\n";
+my $toerase = 0;
+my %keepers = 0;
+my $erasefl = "$logDir/eraser-$group.log";
+if( -f "$erasefl" ) {
+    unlink("$erasefl");
+}
+open( my $BORRADOR,">","$erasefl.tmp" );
+for my $status ( @status ) {
+    open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
+    print {$STATUSF} $heading;
+    my $statusDir = join("/",$localGnms,$status);
+    opendir( my $CHECKD,"$statusDir" );
+    my @subdirs
+        = grep{ m{^GC\S+_\d+} and ( -d "$statusDir/$_" ) } readdir($CHECKD);
+    closedir($CHECKD);
+    for my $subdir ( @subdirs ) {
+        if( exists $refInfo->{"$subdir"} ) {
+            print {$STATUSF} $refInfo->{"$subdir"},"\n";
+            $keepers{"$subdir"}++;
+        }
+        else {
+            print {$BORRADOR} "rm -rf $statusDir/$subdir\n";
+            $toerase++;
+        }
+    }
+    close($STATUSF);
+}
+close($BORRADOR);
+my $tokeep = keys %keepers;
+
+if( $toerase > 0 ) {
+    print "$toerase directories to erase\n";
+    print "$tokeep directories to keep\n";
+    rename("$erasefl.tmp","$erasefl");
+}
+else{
+    print "nothing to erase\n";
+    print "$tokeep directories to keep\n";
+    unlink("$erasefl.tmp");
+}
+
 ########################################################################
 ######### make directories for results
 ########################################################################
@@ -182,50 +230,11 @@ for my $status ( @status ) {
                         "genomes from RefSeq"),"\n";
         my $resultsdir = "$localGnms/$status";
         system qq(mkdir -p $resultsdir) unless( -d "$resultsdir" );
-        bringGenomes($status,\@{ $refStatus->{"$status"} },$resultsdir);
+        bringGenomes($status,\@{ $refStatus->{"$status"} },
+                     $resultsdir,\%keepers);
     }
 }
 
-#### now let's check if all directories correspond to bichos in use
-#### erase otherwise
-print "   checking for genomes to erase\n";
-my $toerase = 0;
-my $tokeep  = 0;
-my $erasefl = "$logDir/eraser-$group.log";
-if( -f "$erasefl" ) {
-    unlink("$erasefl");
-}
-open( my $BORRADOR,">","$erasefl.tmp" );
-for my $status ( @status ) {
-    open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
-    print {$STATUSF} $heading;
-    my $statusDir = join("/",$localGnms,$status);
-    opendir( my $CHECKD,"$statusDir" );
-    my @subdirs = grep{ m{^[A-Z]} } readdir($CHECKD);
-    closedir($CHECKD);
-    for my $subdir ( @subdirs ) {
-        if( exists $refInfo->{"$subdir"} ) {
-            print {$STATUSF} $refInfo->{"$subdir"},"\n";
-            $tokeep++;
-        }
-        else {
-            print {$BORRADOR} "rm -rf $statusDir/$subdir\n";
-            $toerase++;
-        }
-    }
-    close($STATUSF);
-}
-close($BORRADOR);
-if( $toerase > 0 ) {
-    print "$toerase directories to erase\n";
-    print "$tokeep directories to keep\n";
-    rename("$erasefl.tmp","$erasefl");
-}
-else{
-    print "nothing to erase\n";
-    print "$tokeep directories to keep\n";
-    unlink("$erasefl.tmp");
-}
 print "\n\tdone with $0\n\n";
 
 sub readTaxID {
@@ -260,6 +269,7 @@ sub readRefSeq {
     my $taxfield    = 0;
     my $statusfield = 0;
     my $groupfield  = 0;
+    my $excluded    = 0;
     open( my $ASSEM,"<","$assemblyFile" );
   ASSEMBLY:
     while(<$ASSEM>) {
@@ -282,6 +292,10 @@ sub readRefSeq {
                         $groupfield = $index;
                         print "   Group field is $groupfield\n";
                     }
+                    elsif( $headings[$index] eq "excluded_from_refseq" ) {
+                        $excluded = $index;
+                        print "   excluded field is $excluded\n";
+                    }
                 }
             }
         }
@@ -302,9 +316,13 @@ sub readRefSeq {
                 if( $testgroup eq "haploid"
                     && $items[$fixgroup] =~ m{$matchGroup}i ) {
                     $testgroup = $items[$fixgroup];
+                    s{Biological Resource Center,\s*\t}{Biological Resource Center, };
+                    @items = split(/\t/,$_);
+                    print $items[$groupfield],"<---fixed?\n";
                 }
                 next ASSEMBLY if( $testgroup !~ m{$matchGroup}i );
             }
+            next ASSEMBLY if( $items[$excluded] ne "na" );
             #print $items[$groupfield],"\n";
             my $assembly = $items[0];
             my $status
@@ -323,65 +341,86 @@ sub readRefSeq {
 }
 
 sub bringGenomes {
-    my ( $status,$refIDs,$resultsdir ) = @_;
+    my ( $status,$refIDs,$resultsdir,$keepers ) = @_;
     my $maxTries = 5;
-    my $list = $tempFolder . "/" . "$status.list";
+    my $toget = 0;
+    my $list  = $tempFolder . "/" . "$status.list";
+    my $subls = $tempFolder . "/" . "$status.sublist";
     open( my $LS,">","$list" );
+    open( my $SUB,">","$subls" );
     for my $gnmID ( @{ $refIDs } ) {
         #$gnmID =~ s{\.\d+}{};
         print {$LS} $gnmID,"\n";
-    }
-    close($LS);
-    my $zipfile    = "$tempFolder/$status.zip";
-    my $tmpncbi    = "$tempFolder/$status";
-    my $gotthemdir = "$tmpncbi/ncbi_dataset/data";
-    my $metadata   = "$tmpncbi/$status.json.gz";
-    ########### datasets commands:
-    system qq(mkdir -p $tmpncbi);
-    my $getMeta
-        = qq(datasets summary genome accession --inputfile $list)
-        . qq( --as-json-lines | )
-        . qq( gzip --best > $metadata);
-    #print "$getMeta\n";
-    my $downloadCMD
-        = qq(datasets download genome accession --inputfile $list)
-        . qq( --include all --dehydrated --no-progressbar --filename $zipfile);
-    #print $downloadCMD,"\n";
-    my $unzipper = qq(unzip $zipfile -d $tmpncbi);
-    #print $unzipper,"\n";
-    my $rehydrater
-        = qq(datasets rehydrate --gzip --no-progressbar --directory $tmpncbi);
-    #print $rehydrater,"\n";
-    if( $dry eq 'T' ) {
-        print "running dry commands:\n";
-        for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
-            print $cmd,"\n";
-            if( $cmd =~ m{summary} ) {
-                print qq(mv $metadata $resultsdir/ 2>&1 > /dev/null\n);
+        #print "new is $new ($gnmID),",$keepers->{"$gnmID"},"\n";
+        if( $new eq 'T' ) {
+            if( ! exists $keepers->{"$gnmID"} ) {
+                print {$SUB} $gnmID,"\n";
+                print "will bring $gnmID\n";
+                $toget++;
             }
         }
+        else {
+            print {$SUB} $gnmID,"\n";
+            $toget++;
+        }
+    }
+    close($LS);
+    close($SUB);
+    if( $toget == 0 ) {
+        print "   nothing to download\n";
     }
     else {
-        print "downloading:\n";
-        for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
-            print $cmd,"\n";
-            my $try    = 1;
-            my $errors = 1;
-            while( $errors > 0 && $try <= $maxTries ) {
-                print "  download try: $try\n";
-                my $log = qx($cmd 2>&1);
-                $errors = 0;
-                $errors += ( $log =~ s{error}{error}ig );
-                print "errors: $errors\n";
-                $try++;
-                sleep 5;
+        my $zipfile    = "$tempFolder/$status.zip";
+        my $tmpncbi    = "$tempFolder/$status";
+        my $gotthemdir = "$tmpncbi/ncbi_dataset/data";
+        my $metadata   = "$tmpncbi/$status.json.gz";
+        ########### datasets commands:
+        system qq(mkdir -p $tmpncbi);
+        my $getMeta
+            = qq(datasets summary genome accession --inputfile $list)
+            . qq( --as-json-lines | )
+            . qq( gzip --best > $metadata);
+        #print "$getMeta\n";
+        my $downloadCMD
+            = qq(datasets download genome accession --inputfile $subls)
+            . qq( --include all --dehydrated --no-progressbar --filename $zipfile);
+        #print $downloadCMD,"\n";
+        my $unzipper = qq(unzip $zipfile -d $tmpncbi);
+        #print $unzipper,"\n";
+        my $rehydrater
+            = qq(datasets rehydrate --gzip --no-progressbar --directory $tmpncbi);
+        #print $rehydrater,"\n";
+        if( $dry eq 'T' ) {
+            print "running dry commands:\n";
+            for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
+                print $cmd,"\n";
+                if( $cmd =~ m{summary} ) {
+                    print qq(mv $metadata $resultsdir/ 2>&1 > /dev/null\n);
+                }
             }
-            if( $cmd =~ m{summary} ) {
-                system qq(mv $metadata $resultsdir/ 2>&1 > /dev/null);
-            }
-            if( $cmd =~ m{dehydrated} ) {
-                if( ! -f $zipfile ) {
-                    die "no $zipfile to unzip and dehydrate\n";
+        }
+        else {
+            print "downloading:\n";
+            for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
+                print $cmd,"\n";
+                my $try    = 1;
+                my $errors = 1;
+                while( $errors > 0 && $try <= $maxTries ) {
+                    print "  download try: $try\n";
+                    my $log = qx($cmd 2>&1);
+                    $errors = 0;
+                    $errors += ( $log =~ s{error}{error}ig );
+                    print "errors: $errors\n";
+                    $try++;
+                    sleep 5;
+                }
+                if( $cmd =~ m{summary} ) {
+                    system qq(mv $metadata $resultsdir/ 2>&1 > /dev/null);
+                }
+                if( $cmd =~ m{dehydrated} ) {
+                    if( ! -f $zipfile ) {
+                        die "no $zipfile to unzip and dehydrate\n";
+                    }
                 }
             }
         }
