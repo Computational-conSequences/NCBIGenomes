@@ -3,6 +3,7 @@
 use strict;
 use Digest::MD5 qw(md5_hex);
 use Getopt::Long;
+use File::Temp qw( tempfile tempdir );
 
 my $localDir    = "ncbi";
 my $localLists  = $localDir . "/genomeInfo";
@@ -119,7 +120,7 @@ $dry = $dry =~ m{^(T|F)$}i ? uc($1): $defDry;
 $new = $new =~ m{^(T|F)$}i ? uc($1): $defNew;
 
 if( $dry eq "T" ) {
-    print "will only enlist md5 download commands for $group\n";
+    print "will print dry commands for downloading $group\n";
 }
 else {
     print "will download $group\n";
@@ -141,15 +142,16 @@ else {
 print "finding corresponding RefSeq genomes:\n";
 #my ($heading,$refInfo,$refStatus,$refCount)
 #    = readRefSeq($assemblyfile,$refTaxID);
-my ($heading,$refInfo,$refStatus,$refCount)
+my ($heading,$refInfo,$refStatus)
     = readRefSeq($assemblyfile);
 my $total2get = 0;
 print "the RefSeq genome database contains:\n";
 for my $status ( @status ) {
-    if( exists $refCount->{"$status"} ) {
+    if( exists $refStatus->{"$status"} ) {
+        my $count = @{ $refStatus->{"$status"} };
         print "   there's ",join(" ",
-                         $refCount->{"$status"},$status,"genomes"),"\n";
-        $total2get += $refCount->{"$status"};
+                         $count,$status,"genomes"),"\n";
+        $total2get += $count;
     }
 }
 if( $total2get < 1 ) {
@@ -158,10 +160,10 @@ if( $total2get < 1 ) {
 else {
     print "will download $total2get genomes from RefSeq\n";
 }
-exit;
 ########################################################################
 ######### make directories for results
 ########################################################################
+my $tempFolder = tempdir("ncbi/tmp.XXXXXXXXXXXX");
 unless( -d "$localDir" ){
     system "mkdir -p $localGnms" unless( -d "$localGnms");
 }
@@ -170,17 +172,17 @@ unless( -d "$logDir" ){
 }
 
 ########################################################################
-######## verify and bring genomes:
+######## download genomes:
 ########################################################################
 print "downloading from RefSeq:\n";
 for my $status ( @status ) {
-    my @ids = sort grep { $refStatus->{"$_"} eq "$status" } keys %{ $refInfo };
-    my $count = @ids;
-    if( $count > 0 ) {
+    if( exists $refStatus->{"$status"} ) {
+        my $count = @{ $refStatus->{"$status"} };
         print "  ",join(" ","downloading",$count,$status,
-                         "genomes from RefSeq"),"\n";
-        system("mkdir -p $localGnms/$status") unless( -d "$localGnms/$status" );
-        bringGenomes($status,\@ids,$refInfo);
+                        "genomes from RefSeq"),"\n";
+        my $resultsdir = "$localGnms/$status";
+        system qq(mkdir -p $resultsdir) unless( -d "$resultsdir" );
+        bringGenomes($status,\@{ $refStatus->{"$status"} },$resultsdir);
     }
 }
 
@@ -253,8 +255,7 @@ sub readRefSeq {
     my($assemblyFile,$reftaxa) = @_;
     ### open assembly report to learn path to sequences/genome files
     my %fullInfo    = ();
-    my %count       = ();
-    my %status      = ();
+    my %assemblies  = ();
     my $headInfo    = "";
     my $taxfield    = 0;
     my $statusfield = 0;
@@ -291,8 +292,9 @@ sub readRefSeq {
             #if( ! exists $reftaxa->{"$items[$taxfield]"} ) {
             #    next ASSEMBLY;
             #}
+            ###
             if( $matchGroup eq "Eukaryota"  ) {
-                next ASSEMBLY if( ! $items[$groupfield] =~ m{$matcheukarya} );
+                next ASSEMBLY if( $items[$groupfield] !~ m{$matcheukarya} );
             }
             else {
                 my $fixgroup = $groupfield + 1;
@@ -301,29 +303,87 @@ sub readRefSeq {
                     && $items[$fixgroup] =~ m{$matchGroup}i ) {
                     $testgroup = $items[$fixgroup];
                 }
-                next ASSEMBLY if( ! $testgroup =~ m{$matchGroup}i );
+                next ASSEMBLY if( $testgroup !~ m{$matchGroup}i );
             }
+            #print $items[$groupfield],"\n";
             my $assembly = $items[0];
             my $status
                 = $items[$statusfield] =~ m{$statusMatch} ? $&
                 : "none";
             next ASSEMBLY if( $status eq "none");
             $fullInfo{"$assembly"} = $_;
-            $status{"$assembly"}   = $status;
-            $count{"$status"}++;
+            push( @{ $assemblies{"$status"} }, $assembly );
         }
     }
     close($ASSEM);
-    my $clines = keys %status;
+    my $clines = keys %fullInfo;
     if( $clines > 0 ) {
-        return($headInfo,\%fullInfo,\%status,\%count);
+        return($headInfo,\%fullInfo,\%assemblies);
     }
 }
 
 sub bringGenomes {
-    my ( $status,$refIDs,$refInfo ) = @_;
+    my ( $status,$refIDs,$resultsdir ) = @_;
     my $maxTries = 5;
-  ASSEMBLYID:
+    my $list = $tempFolder . "/" . "$status.list";
+    open( my $LS,">","$list" );
     for my $gnmID ( @{ $refIDs } ) {
+        #$gnmID =~ s{\.\d+}{};
+        print {$LS} $gnmID,"\n";
+    }
+    close($LS);
+    my $zipfile    = "$tempFolder/$status.zip";
+    my $tmpncbi    = "$tempFolder/$status";
+    my $gotthemdir = "$tmpncbi/ncbi_dataset/data";
+    my $metadata   = "$tmpncbi/$status.json.gz";
+    ########### datasets commands:
+    system qq(mkdir -p $tmpncbi);
+    my $getMeta
+        = qq(datasets summary genome accession --inputfile $list)
+        . qq( --as-json-lines | )
+        . qq( gzip --best > $metadata);
+    #print "$getMeta\n";
+    my $downloadCMD
+        = qq(datasets download genome accession --inputfile $list)
+        . qq( --include all --dehydrated --no-progressbar --filename $zipfile);
+    #print $downloadCMD,"\n";
+    my $unzipper = qq(unzip $zipfile -d $tmpncbi);
+    #print $unzipper,"\n";
+    my $rehydrater
+        = qq(datasets rehydrate --gzip --no-progressbar --directory $tmpncbi);
+    #print $rehydrater,"\n";
+    if( $dry eq 'T' ) {
+        print "running dry commands:\n";
+        for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
+            print $cmd,"\n";
+            if( $cmd =~ m{summary} ) {
+                print qq(mv $metadata $resultsdir/ 2>&1 > /dev/null\n);
+            }
+        }
+    }
+    else {
+        print "downloading:\n";
+        for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
+            print $cmd,"\n";
+            my $try    = 1;
+            my $errors = 1;
+            while( $errors > 0 && $try <= $maxTries ) {
+                print "  download try: $try\n";
+                my $log = qx($cmd 2>&1);
+                $errors = 0;
+                $errors += ( $log =~ s{error}{error}ig );
+                print "errors: $errors\n";
+                $try++;
+                sleep 5;
+            }
+            if( $cmd =~ m{summary} ) {
+                system qq(mv $metadata $resultsdir/ 2>&1 > /dev/null);
+            }
+            if( $cmd =~ m{dehydrated} ) {
+                if( ! -f $zipfile ) {
+                    die "no $zipfile to unzip and dehydrate\n";
+                }
+            }
+        }
     }
 }
