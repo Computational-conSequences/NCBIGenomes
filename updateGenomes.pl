@@ -355,7 +355,6 @@ sub bringGenomes {
         if( $new eq 'T' ) {
             if( ! exists $keepers->{"$gnmID"} ) {
                 print {$SUB} $gnmID,"\n";
-                print "will bring $gnmID\n";
                 $toget++;
             }
         }
