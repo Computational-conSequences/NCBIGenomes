@@ -237,6 +237,13 @@ for my $status ( @status ) {
 
 print "\n\tdone with $0\n\n";
 
+########################################################################
+########################################################################
+########################################################################
+###################### subroutines: ####################################
+########################################################################
+########################################################################
+########################################################################
 sub readTaxID {
     my ( $taxfile,$group ) = @_;
     my %txinfo  = ();
@@ -261,7 +268,8 @@ sub readTaxID {
 }
 
 sub readRefSeq {
-    my($assemblyFile,$reftaxa) = @_;
+    my $assemblyFile = $_[0];
+    #my($assemblyFile,$reftaxa) = @_;
     ### open assembly report to learn path to sequences/genome files
     my %fullInfo    = ();
     my %assemblies  = ();
@@ -342,7 +350,6 @@ sub readRefSeq {
 
 sub bringGenomes {
     my ( $status,$refIDs,$resultsdir,$keepers ) = @_;
-    my $maxTries = 5;
     my $toget = 0;
     my $list  = $tempFolder . "/" . "$status.list";
     my $subls = $tempFolder . "/" . "$status.sublist";
@@ -379,16 +386,15 @@ sub bringGenomes {
             = qq(datasets summary genome accession --inputfile $list)
             . qq( --as-json-lines | )
             . qq( gzip --best > $metadata);
-        #print "$getMeta\n";
         my $downloadCMD
             = qq(datasets download genome accession --inputfile $subls)
-            . qq( --include all --dehydrated --no-progressbar --filename $zipfile);
-        #print $downloadCMD,"\n";
-        my $unzipper = qq(unzip $zipfile -d $tmpncbi);
-        #print $unzipper,"\n";
+            . qq( --include all --dehydrated --no-progressbar)
+            . qq( --filename $zipfile);
+        my $unzipper
+            = qq(unzip $zipfile -d $tmpncbi);
         my $rehydrater
-            = qq(datasets rehydrate --gzip --no-progressbar --directory $tmpncbi);
-        #print $rehydrater,"\n";
+            = qq(datasets rehydrate --gzip --no-progressbar)
+            . qq( --directory $tmpncbi);
         if( $dry eq 'T' ) {
             print "running dry commands:\n";
             for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
@@ -400,18 +406,18 @@ sub bringGenomes {
         }
         else {
             print "downloading:\n";
+            my $maxTries = 10;
             for my $cmd ( $getMeta, $downloadCMD, $unzipper, $rehydrater ) {
-                print $cmd,"\n";
                 my $try    = 1;
                 my $errors = 1;
                 while( $errors > 0 && $try <= $maxTries ) {
-                    print "  download try: $try\n";
+                    print $cmd,": try $try\n";
                     my $log = qx($cmd 2>&1);
                     $errors = 0;
                     $errors += ( $log =~ s{error}{error}ig );
-                    print "errors: $errors\n";
+                    print "errors in try $try: $errors\n";
                     $try++;
-                    sleep 5;
+                    sleep 60;
                 }
                 if( $cmd =~ m{summary} ) {
                     system qq(mv $metadata $resultsdir/ 2>&1 > /dev/null);
@@ -421,6 +427,17 @@ sub bringGenomes {
                         die "no $zipfile to unzip and dehydrate\n";
                     }
                 }
+            }
+            ####### now move to proper directory
+            opendir( my $NCBI,$gotthemdir );
+            my @tomove
+                = grep { m{GC\S+_\d+} and -d "$gotthemdir/$_" } readdir($NCBI);
+            closedir($NCBI);
+            for my $tomove ( @tomove ) {
+                my $moveit
+                    = qq(rsync -av --delete $gotthemdir/$tomove)
+                    . qq( $resultsdir/$tomove);
+                my $transfer = qx($moveit 2>&1);
             }
         }
     }
