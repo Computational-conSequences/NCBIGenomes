@@ -429,6 +429,7 @@ sub bringGenomes {
                 }
             }
             ####### now move to proper directory
+            print "now moving files to $resultsdir\n";
             opendir( my $NCBI,$gotthemdir );
             my @tomove
                 = grep { m{GC\S+_\d+} and -d "$gotthemdir/$_" } readdir($NCBI);
@@ -439,6 +440,7 @@ sub bringGenomes {
                     . qq( $resultsdir/$tomove);
                 my $transfer = qx($moveit 2>&1);
             }
+            print "   done moving files\n";
         }
     }
 }
