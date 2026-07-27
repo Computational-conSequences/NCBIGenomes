@@ -133,6 +133,17 @@ else {
 }
 
 ########################################################################
+######### make directories for results
+########################################################################
+my $tempFolder = tempdir("ncbi/tmp.XXXXXXXXXXXX");
+unless( -d "$localGnms" ){
+    system qq(mkdir -p $localGnms);
+}
+unless( -d "$logDir" ){
+    system qq(mkdir -p $logDir);
+}
+
+########################################################################
 ############# reading the list of genomes to ensure we know which ones
 ############# are in the group we want
 ########################################################################
@@ -142,8 +153,7 @@ else {
 print "finding corresponding RefSeq genomes:\n";
 #my ($heading,$refInfo,$refStatus,$refCount)
 #    = readRefSeq($assemblyfile,$refTaxID);
-my ($heading,$refInfo,$refStatus)
-    = readRefSeq($assemblyfile);
+my ($heading,$refInfo,$refStatus) = readRefSeq($assemblyfile);
 my $total2get = 0;
 print "the RefSeq genome database contains:\n";
 for my $status ( @status ) {
@@ -152,6 +162,14 @@ for my $status ( @status ) {
         print join(" ",
                    $status,"genomes",$count),"\n";
         $total2get += $count;
+        open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
+        print {$STATUSF} $heading;
+        for my $gcf ( @{ $refStatus->{"$status"} } ) {
+            if( exists $refInfo->{"$gcf"} ) {
+                print {$STATUSF} $refInfo->{"$gcf"},"\n";
+            }
+        }
+        close($STATUSF);
     }
 }
 if( $total2get < 1 ) {
@@ -174,17 +192,18 @@ if( -f "$erasefl" ) {
     unlink("$erasefl");
 }
 open( my $BORRADOR,">","$erasefl.tmp" );
+CHECKINGGNMS:
 for my $status ( @status ) {
-    open( my $STATUSF,"|-","bzip2 -9 > $localGnms/$status.info.bz2" );
-    print {$STATUSF} $heading;
     my $statusDir = join("/",$localGnms,$status);
+    if( ! -d $statusDir ) {
+        next CHECKINGGNMS;
+    }
     opendir( my $CHECKD,"$statusDir" );
     my @subdirs
         = grep{ m{^GC\S+_\d+} and ( -d "$statusDir/$_" ) } readdir($CHECKD);
     closedir($CHECKD);
     for my $subdir ( @subdirs ) {
         if( exists $refInfo->{"$subdir"} ) {
-            print {$STATUSF} $refInfo->{"$subdir"},"\n";
             $keepers{"$subdir"}++;
         }
         else {
@@ -192,7 +211,6 @@ for my $status ( @status ) {
             $toerase++;
         }
     }
-    close($STATUSF);
 }
 close($BORRADOR);
 my $tokeep = keys %keepers;
@@ -206,17 +224,6 @@ else{
     print "nothing to erase\n";
     print "$tokeep directories to keep\n";
     unlink("$erasefl.tmp");
-}
-
-########################################################################
-######### make directories for results
-########################################################################
-my $tempFolder = tempdir("ncbi/tmp.XXXXXXXXXXXX");
-unless( -d "$localDir" ){
-    system "mkdir -p $localGnms" unless( -d "$localGnms");
-}
-unless( -d "$logDir" ){
-    mkdir("$logDir") unless( -d "$logDir");
 }
 
 ########################################################################
@@ -393,7 +400,7 @@ sub bringGenomes {
         my $unzipper
             = qq(unzip $zipfile -d $tmpncbi);
         my $rehydrater
-            = qq(datasets rehydrate --gzip --no-progressbar)
+            = qq(datasets rehydrate --gzip --no-progressbar --max-workers 20)
             . qq( --directory $tmpncbi);
         if( $dry eq 'T' ) {
             print "running dry commands:\n";
@@ -420,7 +427,10 @@ sub bringGenomes {
                     sleep 60;
                 }
                 if( $cmd =~ m{summary} ) {
+                    my $metatsv = cleanMeta($metadata);
+                    print  qq(mv $metadata $resultsdir/ 2>&1 > /dev/null\n);
                     system qq(mv $metadata $resultsdir/ 2>&1 > /dev/null);
+                    system qq(mv $metatsv  $resultsdir/ 2>&1 > /dev/null);
                 }
                 if( $cmd =~ m{dehydrated} ) {
                     if( ! -f $zipfile ) {
@@ -436,11 +446,36 @@ sub bringGenomes {
             closedir($NCBI);
             for my $tomove ( @tomove ) {
                 my $moveit
-                    = qq(rsync -av --delete $gotthemdir/$tomove)
-                    . qq( $resultsdir/$tomove);
+                    = qq(rsync -av --delete --remove-source-files)
+                    . qq( $gotthemdir/$tomove/ $resultsdir/$tomove);
+                #print $moveit,"\n";
                 my $transfer = qx($moveit 2>&1);
+                my $errors = 0;
+                $errors += ( $transfer =~ s{}{}g );
+                if ( $errors == 0 ) {
+                    system qq(rmdir $gotthemdir/$tomove);
+                }
             }
             print "   done moving files\n";
         }
     }
+}
+
+sub cleanMeta {
+    my $metajson = $_[0];
+    my $metatsv  = $metajson;
+    $metatsv =~ s{json}{tsv};
+    my %seen = ();
+    print "cleaning $metajson to $metatsv\n";
+    open( my $TSV,"|-","gzip --best > $metatsv.tmp" );
+    for my $line ( qx(gzip -qdc $metajson | dataformat tsv genome) ) {
+        my @test = split(/\s+/,$line);
+        if( ! exists $seen{"$test[0]"} ) {
+            print {$TSV} $line;
+            $seen{"$test[0]"}++;
+        }
+    }
+    close($TSV);
+    rename( "$metatsv.tmp","$metatsv" );
+    return($metatsv);
 }
