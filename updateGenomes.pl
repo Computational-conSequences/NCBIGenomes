@@ -34,6 +34,17 @@ my @allstatus = qw(
                       Contig
               );
 
+my @fltypes = qw(
+                    genome
+                    protein
+                    cds
+                    gff3
+                    gbff
+                    rna
+                    seq-report
+            );
+my $fltypes = join(",",@fltypes);
+
 my $defDry    = 'T';
 my $defNew    = 'T';
 my $allstatus = join("|",@allstatus);
@@ -395,7 +406,7 @@ sub bringGenomes {
             . qq( gzip --best > $metadata);
         my $downloadCMD
             = qq(datasets download genome accession --inputfile $subls)
-            . qq( --include all --dehydrated --no-progressbar)
+            . qq( --include $fltypes --dehydrated --no-progressbar)
             . qq( --filename $zipfile);
         my $unzipper
             = qq(unzip $zipfile -d $tmpncbi);
