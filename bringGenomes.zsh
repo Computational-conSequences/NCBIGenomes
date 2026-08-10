@@ -5,30 +5,31 @@ if [ $# -eq 0 ]; then
 fi
 BICHO="$@"
 DATA=$(echo $BICHO | perl -pe 'chomp(); s{\s+}{_}g')
-LIST=DataSets/$DATA.list
+LIST="NCBIMD/$DATA.list"
+DLDIR="NCBIDL"
 echo "BICHO is $BICHO"
 echo "DATA is $DATA"
-echo "downloading $BICHO genomes"
-datasets download genome accession --inputfile DataSets/$DATA.list --include all --dehydrated --filename DataSets/$DATA.zip
-unzip DataSets/$DATA.zip -d NCBI
+echo "downloading $BICHO genomes to $DLDIR"
+datasets download genome accession --inputfile $LIST --include all --dehydrated --filename $DATA.zip
+unzip $DATA.zip -d $DLDIR
 echo "Extracting stuff"
-datasets rehydrate --gzip --directory NCBI
-datasets rehydrate --gzip --directory NCBI
+datasets rehydrate --gzip --directory $DLDIR
+datasets rehydrate --gzip --directory $DLDIR
 
-for EXT in cds faa fna gbff gff gtf
+for EXT in cds faa fna gbff gff
 do
     mkdir -p ${EXT}-${DATA}
 done
 
-for GCF in $(\ls NCBI/ncbi_dataset/data)
+for GCF in $(\ls $DLDIR/ncbi_dataset/data)
 do
     echo "working with $GCF"
-    mv NCBI/ncbi_dataset/data/$GCF/$GCF*_genomic.fna.gz fna-${DATA}/$GCF:r.fna.gz
-    mv NCBI/ncbi_dataset/data/$GCF/cds_from_genomic.fna.gz cds-${DATA}/$GCF:r.cds.gz
-    mv NCBI/ncbi_dataset/data/$GCF/protein.faa.gz faa-${DATA}/$GCF:r.faa.gz
+    mv $DLDIR/ncbi_dataset/data/$GCF/$GCF*_genomic.fna.gz fna-${DATA}/$GCF:r.fna.gz
+    mv $DLDIR/ncbi_dataset/data/$GCF/cds_from_genomic.fna.gz cds-${DATA}/$GCF:r.cds.gz
+    mv $DLDIR/ncbi_dataset/data/$GCF/protein.faa.gz faa-${DATA}/$GCF:r.faa.gz
     for EXT in gbff gff gtf
     do
-        mv NCBI/ncbi_dataset/data/$GCF/genomic.$EXT.gz ${EXT}-${DATA}/$GCF:r.$EXT.gz
+        mv $DLDIR/ncbi_dataset/data/$GCF/genomic.$EXT.gz ${EXT}-${DATA}/$GCF:r.$EXT.gz
     done
 done
-rm -r NCBI
+rm -r $DLDIR
