@@ -28,7 +28,7 @@ do
     mv $DLDIR/ncbi_dataset/data/$GCF/$GCF*_genomic.fna.gz fna-${DATA}/$GCF:r.fna.gz
     mv $DLDIR/ncbi_dataset/data/$GCF/cds_from_genomic.fna.gz cds-${DATA}/$GCF:r.cds.gz
     mv $DLDIR/ncbi_dataset/data/$GCF/protein.faa.gz faa-${DATA}/$GCF:r.faa.gz
-    for EXT in gbff gff gtf
+    for EXT in gbff gff
     do
         mv $DLDIR/ncbi_dataset/data/$GCF/genomic.$EXT.gz ${EXT}-${DATA}/$GCF:r.$EXT.gz
     done
