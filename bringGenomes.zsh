@@ -7,6 +7,7 @@ BICHO="$@"
 DATA=$(echo $BICHO | perl -pe 'chomp(); s{\s+}{_}g')
 LIST="NCBIMD/$DATA.list"
 DLDIR="NCBIDL"
+mkdir -p $DLDIR
 echo "BICHO is $BICHO"
 echo "DATA is $DATA"
 echo "downloading $BICHO genomes to $DLDIR"
